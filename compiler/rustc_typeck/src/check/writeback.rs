@@ -57,6 +57,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         wbcx.visit_body(body);
         wbcx.visit_upvar_capture_map();
         wbcx.visit_closures();
+        wbcx.visit_min_capture_map();
         wbcx.visit_liberated_fn_sigs();
         wbcx.visit_fru_field_types();
         wbcx.visit_opaque_types(body.value.span);
@@ -329,6 +330,29 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
 }
 
 impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
+    fn visit_min_capture_map(&mut self) {
+        self.typeck_results.closure_min_captures =
+            mem::take(&mut self.fcx.typeck_results.borrow_mut().closure_min_captures);
+
+        let region = self.tcx().lifetimes.re_erased;
+        for (_, min_captures) in self.typeck_results.closure_min_captures.iter_mut() {
+            for (_, var_min_captures) in min_captures.iter_mut() {
+                for captured_place in var_min_captures.iter_mut() {
+                    let capture_kind = match captured_place.info.capture_kind {
+                        ty::UpvarCapture::ByValue(span) => ty::UpvarCapture::ByValue(span),
+                        ty::UpvarCapture::ByRef(ref upvar_borrow) => {
+                            ty::UpvarCapture::ByRef(ty::UpvarBorrow {
+                                kind: upvar_borrow.kind,
+                                region,
+                            })
+                        }
+                    };
+                    captured_place.info.capture_kind = capture_kind;
+                }
+            }
+        }
+    }
+
     fn visit_upvar_capture_map(&mut self) {
         for (upvar_id, upvar_capture) in self.fcx.typeck_results.borrow().upvar_capture_map.iter() {
             let new_upvar_capture = match *upvar_capture {

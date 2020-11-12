@@ -386,6 +386,10 @@ fn make_mirror_unadjusted<'a, 'tcx>(
                     span_bug!(expr.span, "closure expr w/o closure type: {:?}", closure_ty);
                 }
             };
+            debug!(
+                "closure_min_captures: {:#?}",
+                cx.typeck_results().closure_min_captures.get(&def_id)
+            );
             let upvars = cx
                 .typeck_results()
                 .closure_captures

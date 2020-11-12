@@ -124,24 +124,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let local_def_id = closure_def_id.expect_local();
 
-        let mut capture_information: FxIndexMap<Place<'tcx>, ty::CaptureInfo<'tcx>> =
-            Default::default();
-        if !self.tcx.features().capture_disjoint_fields {
-            if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
-                for (&var_hir_id, _) in upvars.iter() {
-                    let place = self.place_for_root_variable(local_def_id, var_hir_id);
-
-                    debug!("seed place {:?}", place);
-
-                    let upvar_id = ty::UpvarId::new(var_hir_id, local_def_id);
-                    let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
-                    let info = ty::CaptureInfo { expr_id: None, capture_kind };
-
-                    capture_information.insert(place, info);
-                }
-            }
-        }
-
         let body_owner_def_id = self.tcx.hir().body_owner_def_id(body.id());
         assert_eq!(body_owner_def_id.to_def_id(), closure_def_id);
         let mut delegate = InferBorrowKind {
@@ -151,7 +133,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             capture_clause,
             current_closure_kind: ty::ClosureKind::LATTICE_BOTTOM,
             current_origin: None,
-            capture_information,
+            capture_information: Default::default(),
         };
         euv::ExprUseVisitor::new(
             &mut delegate,
@@ -185,6 +167,34 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
 
         self.compute_min_captures(closure_def_id, delegate);
+
+        // If a particular root variable isn't captured we capture it.
+        if !self.tcx.features().capture_disjoint_fields {
+            if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
+                // Create a map of type 
+                // RootVariableMinCaptureList
+                //
+                // Add rootvariables that missing from the min capture list
+                // 
+                // `extend` the map min capture map with this new map
+                //
+                // ensure src/test/ui/closures/closure-bounds-static-cant-capture-borrowed.rs pass
+                for (&var_hir_id, _) in upvars.iter() {
+                    // Need to do this after running `ExprUseVisitor` because otherwise we won't
+                    // have the type for the place base.
+                    let place = self.place_for_root_variable(local_def_id, var_hir_id);
+
+
+                    debug!("seed place {:?}", place);
+
+                    let upvar_id = ty::UpvarId::new(var_hir_id, local_def_id);
+                    let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
+                    let info = ty::CaptureInfo { expr_id: None, capture_kind };
+
+                    capture_information.insert(place, info);
+                }
+            }
+        }
         self.log_closure_min_capture_info(closure_def_id, span);
 
         self.min_captures_to_closure_captures_bridge(closure_def_id);
@@ -265,8 +275,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     /// For example the following structure will be converted:
     ///
     /// closure_min_captures
-    /// foo -> [ {foo.x, ImmBorrow}, {foo.y, MutBorrow} ]
-    /// bar -> [ {bar.z, ByValue}, {bar.q, MutBorrow} ]
+    /// c  -> {
+    ///     foo -> [ {foo.x, ImmBorrow}, {foo.y, MutBorrow} ]
+    ///     bar -> [ {bar.z, ByValue}, {bar.q, MutBorrow} ]
+    /// }
     ///
     /// to
     ///
