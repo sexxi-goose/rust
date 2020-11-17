@@ -122,7 +122,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             None
         };
 
-        let local_def_id = closure_def_id.expect_local();
+        // let local_def_id = closure_def_id.expect_local();
 
         let body_owner_def_id = self.tcx.hir().body_owner_def_id(body.id());
         assert_eq!(body_owner_def_id.to_def_id(), closure_def_id);
@@ -148,7 +148,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             "For closure={:?}, capture_information={:#?}",
             closure_def_id, delegate.capture_information
         );
-        self.log_capture_analysis_first_pass(closure_def_id, &delegate.capture_information, span);
+        self.log_closure_capture_info(closure_def_id, &delegate.capture_information, span);
 
         if let Some(closure_substs) = infer_kind {
             // Unify the (as yet unbound) type variable in the closure
@@ -169,39 +169,37 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         self.compute_min_captures(closure_def_id, delegate);
 
         // If a particular root variable isn't captured we capture it.
-        if !self.tcx.features().capture_disjoint_fields {
-            if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
-                // Create a map of type
-                // RootVariableMinCaptureList
-                // Add rootvariables that missing from the min capture list
-                // `extend` the map min capture map with this new map
-                //
-                // ensure src/test/ui/closures/closure-bounds-static-cant-capture-borrowed.rs pass
-                let mut uncaptured_root_vars: ty::RootVariableMinCaptureList<'_> =
-                    Default::default();
+        // if !self.tcx.features().capture_disjoint_fields {
+        if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
+            // Create a map of type
+            // RootVariableMinCaptureList
+            // Add rootvariables that missing from the min capture list
+            // `extend` the map min capture map with this new map
+            //
+            // src/test/ui/closures/closure-bounds-static-cant-capture-borrowed.rs pass
+            // let _uncaptured_root_vars: ty::RootVariableMinCaptureList<'_> = Default::default();
 
-                for (&var_hir_id, _) in upvars.iter() {
-                    // Need to do this after running `ExprUseVisitor` because otherwise we won't
-                    // have the type for the place base.
-                    let place = self.place_for_root_variable(local_def_id, var_hir_id);
+            for (&_var_hir_id, _) in upvars.iter() {
+                // Need to do this after running `ExprUseVisitor` because otherwise we won't
+                // have the type for the place base.
+                // let _place = self.place_for_root_variable(local_def_id, var_hir_id);
 
-                    debug!("seed place {:?}", place);
-                    if !self.typeck_results.borrow().closure_min_captures[&closure_def_id]
-                        .contains_key(&var_hir_id)
-                    {
-                        let upvar_id = ty::UpvarId::new(var_hir_id, local_def_id);
-                        let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
-                        let info = ty::CaptureInfo { expr_id: None, capture_kind };
-                        let min_cap_list = vec![ty::CapturedPlace { place, info }];
-                        uncaptured_root_vars.insert(var_hir_id, min_cap_list);
-                    }
-                }
-                if let Some(min_captures) =
-                    self.typeck_results.borrow_mut().closure_min_captures.get_mut(&closure_def_id)
-                {
-                    min_captures.extend(uncaptured_root_vars);
-                }
+                // debug!("seed place {:?}", place);
+                //         if !self.typeck_results.borrow().closure_min_captures[&closure_def_id]
+                //             .contains_key(&vßar_hir_id)
+                // {
+                // let upvar_id = ty::UpvarId::new(var_hir_id, local_def_id);
+                // let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
+                // let _info = ty::CaptureInfo { expr_id: None, capture_kind };
+                //             let min_cap_list = vec![ty::CapturedPlace { place, info }];
+                //             uncaptured_root_vars.insert(var_hir_id, min_cap_list);
+                //         }
             }
+            // if let Some(min_captures) =self.typeck_results.borrow_mut().closure_min_captures.get_mut(&closure_def_id)
+            // {
+            //     min_captures.extend(uncaptured_root_vars);
+            // }
+            //     }
         }
         self.log_closure_min_capture_info(closure_def_id, span);
 
