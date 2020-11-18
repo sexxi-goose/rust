@@ -723,7 +723,24 @@ impl<'a, 'tcx> HashStable<StableHashingContext<'a>> for TypeckResults<'tcx> {
             tainted_by_errors.hash_stable(hcx, hasher);
             concrete_opaque_types.hash_stable(hcx, hasher);
             closure_captures.hash_stable(hcx, hasher);
-            closure_min_captures.hash_stable(hcx, hasher);
+
+            println!("min_capture= {:#?}", closure_min_captures);
+            // hash_stable_hashmap(hcx, hasher, closure_min_captures, |closure_def_id, hcx| {
+            //     hash_stable_hashmap(
+            //         hcx,
+            //         hasher,
+            //         closure_min_captures,
+            //         |min_captures_for_root_variable, hcx| {
+            //             min_captures_for_root_variable
+            //                 .iter()
+            //                 .map(|captured_place| captured_place.place)
+            //                 .collect()
+            //                 .hash_stable(hcx, hasher);
+            //         },
+            //     )
+            // });
+            // closure_min_captures.hash_stable(hcx, hasher);
+
             generator_interior_types.hash_stable(hcx, hasher);
             treat_byte_string_as_slice.hash_stable(hcx, hasher);
         })

@@ -148,7 +148,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             "For closure={:?}, capture_information={:#?}",
             closure_def_id, delegate.capture_information
         );
-        self.log_closure_capture_info(closure_def_id, &delegate.capture_information, span);
+        self.log_capture_analysis_first_pass(closure_def_id, &delegate.capture_information, span);
 
         if let Some(closure_substs) = infer_kind {
             // Unify the (as yet unbound) type variable in the closure
@@ -170,37 +170,37 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         // If a particular root variable isn't captured we capture it.
         // if !self.tcx.features().capture_disjoint_fields {
-        if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
-            // Create a map of type
-            // RootVariableMinCaptureList
-            // Add rootvariables that missing from the min capture list
-            // `extend` the map min capture map with this new map
-            //
-            // src/test/ui/closures/closure-bounds-static-cant-capture-borrowed.rs pass
-            // let _uncaptured_root_vars: ty::RootVariableMinCaptureList<'_> = Default::default();
+        // if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
+        // Create a map of type
+        // RootVariableMinCaptureList
+        // Add rootvariables that missing from the min capture list
+        // `extend` the map min capture map with this new map
+        //
+        // src/test/ui/closures/closure-bounds-static-cant-capture-borrowed.rs pass
+        // let _uncaptured_root_vars: ty::RootVariableMinCaptureList<'_> = Default::default();
 
-            for (&_var_hir_id, _) in upvars.iter() {
-                // Need to do this after running `ExprUseVisitor` because otherwise we won't
-                // have the type for the place base.
-                // let _place = self.place_for_root_variable(local_def_id, var_hir_id);
+        //     for (&var_hir_id, _) in upvars.iter() {
+        //         // Need to do this after running `ExprUseVisitor` because otherwise we won't
+        //         // have the type for the place base.
+        //         let _place = self.place_for_root_variable(local_def_id, var_hir_id);
 
-                // debug!("seed place {:?}", place);
-                //         if !self.typeck_results.borrow().closure_min_captures[&closure_def_id]
-                //             .contains_key(&vßar_hir_id)
-                // {
-                // let upvar_id = ty::UpvarId::new(var_hir_id, local_def_id);
-                // let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
-                // let _info = ty::CaptureInfo { expr_id: None, capture_kind };
-                //             let min_cap_list = vec![ty::CapturedPlace { place, info }];
-                //             uncaptured_root_vars.insert(var_hir_id, min_cap_list);
-                //         }
-            }
-            // if let Some(min_captures) =self.typeck_results.borrow_mut().closure_min_captures.get_mut(&closure_def_id)
-            // {
-            //     min_captures.extend(uncaptured_root_vars);
-            // }
-            //     }
-        }
+        //         // debug!("seed place {:?}", place);
+        //         //         if !self.typeck_results.borrow().closure_min_captures[&closure_def_id]
+        //         //             .contains_key(&vßar_hir_id)
+        //         // {
+        //         // let upvar_id = ty::UpvarId::new(var_hir_id, local_def_id);
+        //         // let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
+        //         // let _info = ty::CaptureInfo { expr_id: None, capture_kind };
+        //         //             let min_cap_list = vec![ty::CapturedPlace { place, info }];
+        //         //             uncaptured_root_vars.insert(var_hir_id, min_cap_list);
+        //         //         }
+        //     }
+        //     // if let Some(min_captures) =self.typeck_results.borrow_mut().closure_min_captures.get_mut(&closure_def_id)
+        //     // {
+        //     //     min_captures.extend(uncaptured_root_vars);
+        //     // }
+        //     //     }
+        // }
         self.log_closure_min_capture_info(closure_def_id, span);
 
         self.min_captures_to_closure_captures_bridge(closure_def_id);
@@ -499,19 +499,19 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
-    fn place_for_root_variable(
-        &self,
-        closure_def_id: LocalDefId,
-        var_hir_id: hir::HirId,
-    ) -> Place<'tcx> {
-        let upvar_id = ty::UpvarId::new(var_hir_id, closure_def_id);
+    // fn place_for_root_variable(
+    //     &self,
+    //     closure_def_id: LocalDefId,
+    //     var_hir_id: hir::HirId,
+    // ) -> Place<'tcx> {
+    //     let upvar_id = ty::UpvarId::new(var_hir_id, closure_def_id);
 
-        Place {
-            base_ty: self.node_ty(var_hir_id),
-            base: PlaceBase::Upvar(upvar_id),
-            projections: Default::default(),
-        }
-    }
+    //     Place {
+    //         base_ty: self.node_ty(var_hir_id),
+    //         base: PlaceBase::Upvar(upvar_id),
+    //         projections: Default::default(),
+    //     }
+    // }
 
     fn should_log_capture_analysis(&self, closure_def_id: DefId) -> bool {
         self.tcx.has_attr(closure_def_id, sym::rustc_capture_analysis)
