@@ -124,24 +124,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let local_def_id = closure_def_id.expect_local();
 
-        let mut capture_information: FxIndexMap<Place<'tcx>, ty::CaptureInfo<'tcx>> =
-            Default::default();
-        if !self.tcx.features().capture_disjoint_fields {
-            if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
-                for (&var_hir_id, _) in upvars.iter() {
-                    let place = self.place_for_root_variable(local_def_id, var_hir_id);
-
-                    debug!("seed place {:?}", place);
-
-                    let upvar_id = ty::UpvarId::new(var_hir_id, local_def_id);
-                    let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
-                    let info = ty::CaptureInfo { expr_id: None, capture_kind };
-
-                    capture_information.insert(place, info);
-                }
-            }
-        }
-
         let body_owner_def_id = self.tcx.hir().body_owner_def_id(body.id());
         assert_eq!(body_owner_def_id.to_def_id(), closure_def_id);
         let mut delegate = InferBorrowKind {
@@ -151,7 +133,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             capture_clause,
             current_closure_kind: ty::ClosureKind::LATTICE_BOTTOM,
             current_origin: None,
-            capture_information,
+            capture_information: Default::default(),
         };
         euv::ExprUseVisitor::new(
             &mut delegate,
@@ -161,6 +143,26 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             &self.typeck_results.borrow(),
         )
         .consume_body(body);
+
+        // We want to do this after going through `ExprUseVisitor`,
+        // this ensures all types are resolved.
+        if !self.tcx.features().capture_disjoint_fields {
+            if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
+                for var_hir_id in upvars.keys() {
+                    let place = self.place_for_root_variable(local_def_id, *var_hir_id);
+
+                    let upvar_id = ty::UpvarId::new(*var_hir_id, local_def_id);
+                    let capture_kind = self.init_capture_kind(capture_clause, upvar_id, span);
+                    let new_info = ty::CaptureInfo { expr_id: None, capture_kind };
+
+                    if let Some(info) = delegate.capture_information.get_mut(&place) {
+                        *info = determine_capture_info(*info, new_info);
+                    } else {
+                        delegate.capture_information.insert(place, new_info);
+                    }
+                }
+            }
+        }
 
         debug!(
             "For closure={:?}, capture_information={:#?}",
