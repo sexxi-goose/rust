@@ -7,10 +7,12 @@ use crate::thir::*;
 use rustc_hir::def_id::DefId;
 use rustc_hir::HirId;
 use rustc_middle::middle::region;
+use rustc_middle::hir::place::ProjectionKind as HirProjectionKind;
 use rustc_middle::mir::AssertKind::BoundsCheck;
 use rustc_middle::mir::*;
 use rustc_middle::ty::{self, CanonicalUserTypeAnnotation, Ty, TyCtxt, Variance};
 use rustc_span::Span;
+use rustc_target::abi::VariantIdx;
 
 use rustc_index::vec::Idx;
 
@@ -32,59 +34,141 @@ struct PlaceBuilder<'tcx> {
     projection: Vec<PlaceElem<'tcx>>,
 }
 
-fn capture_matching_projections<'a, 'tcx>(
-    tcx: TyCtxt<'tcx>,
+/// Given a list of MIR projections, convert them to list of hir ProjectionKind.
+fn convert_to_hir_projections_for_capture<'tcx>(
+    mir_projections: &Vec<PlaceElem<'tcx>>) -> Vec<HirProjectionKind> {
+
+    let mut hir_projections  = Vec::new();
+
+    for mir_projection in mir_projections {
+        let hir_projection = match mir_projection {
+            ProjectionElem::Deref => HirProjectionKind::Deref,
+            ProjectionElem::Field(field, _) => {
+                // We will never encouter this for multivariant enums,
+                // read the comment for `Downcast`.
+                HirProjectionKind::Field(field.index() as u32, VariantIdx::new(0))
+            },
+            ProjectionElem::Downcast(..) => {
+                // This projections exist only for enums that have
+                // multiple variants. Since such enums that are captured
+                // completely, we can stop here.
+                break
+            },
+            ProjectionElem::Index(..)
+            | ProjectionElem::ConstantIndex { .. }
+            | ProjectionElem::Subslice { .. } => {
+                // We don't capture array-access projections.
+                // We can stop here as arrays are captured completely.
+                break
+            },
+        };
+
+        hir_projections.push(hir_projection);
+    }
+
+    hir_projections
+}
+
+fn is_ancestor_of_capture(
+    proj_possible_ancestor: &Vec<HirProjectionKind>,
+    proj_capture: &Vec<HirProjectionKind>) -> bool {
+
+    for (proj_ans, proj_capture) in proj_possible_ancestor.iter().zip(proj_capture.iter()) {
+        if proj_ans != proj_capture {
+            return false;
+        }
+    }
+
+    // In cases like
+    // ```rust,ignore(wont-compile-because-pseudocode)
+    // let c = ||  {
+    //     x.0.1 += 1;
+    //     let _ = x.0;
+    // }
+    // ```
+    //
+    // Here with `capture_disjoint_fields` enabled, x.0 won't be
+    // captured but x.0.1 would be.
+    //
+    // Therefore we can't just return true here.
+    proj_possible_ancestor.len() <= proj_capture.len()
+}
+
+/// Computes the index of a capture within the desugared closure provided the closure's
+/// `closure_min_captures` and the capture's index of the capture in the
+/// `ty::MinCaptureList` of the root variable `var_hir_id`.
+fn compute_capture_idx<'tcx>(
+    closure_min_captures: &ty::RootVariableMinCaptureList<'tcx>,
+    var_hir_id: HirId,
+    root_var_idx: usize) -> usize {
+    let mut res = 0;
+    for (var_id, capture_list) in closure_min_captures {
+        if *var_id == var_hir_id {
+            res += root_var_idx;
+            break;
+        } else {
+            res += capture_list.len();
+        }
+    }
+
+    res
+}
+
+/// Given a closure, returns the index of a capture within the desugared closure struct and the
+/// `ty::CapturedPlace` which is the ancestor of the Place represented using the `var_hir_id`
+/// and `projection`.
+///
+/// Note there will be atmost one ancestor for any given Place.
+///
+/// Returns None, when the ancestor is not found.
+fn find_capture_matching_projections<'a, 'tcx>(
     typeck_results: &'a ty::TypeckResults<'tcx>,
     var_hir_id: HirId,
     closure_def_id: DefId,
     projections: &Vec<PlaceElem<'tcx>>,
-) -> Option<(usize, Ty<'tcx>, ty::UpvarCapture<'tcx>)> {
-    let capture = typeck_results
-        .closure_captures
-        .get(&closure_def_id)
-        .and_then(|captures| captures.get_full(&var_hir_id));
+) -> Option<(usize, &'a ty::CapturedPlace<'tcx>)> {
+    let closure_min_captures = typeck_results
+        .closure_min_captures
+        .get(&closure_def_id);
 
-    if capture.is_none() {
-        if !tcx.features().capture_disjoint_fields {
-            bug!(
-                "No associated capture found for {:?}[{:#?}] even though \
-                capture_disjoint_fields isn't enabled",
-                var_hir_id,
-                projections
-            )
-        }
-    }
-
-    // Unwrap until the FIXME has been resolved
-    let (capture_index, _, _) = capture.unwrap();
-
-    let closure_ty =
-        typeck_results.node_type(tcx.hir().local_def_id_to_hir_id(closure_def_id.expect_local()));
-
-    let substs = match closure_ty.kind() {
-        ty::Closure(_, substs) => ty::UpvarSubsts::Closure(substs),
-        ty::Generator(_, substs, _) => ty::UpvarSubsts::Generator(substs),
-        _ => bug!("Lowering capture for non-closure type {:?}", closure_ty),
+    let closure_min_captures = if let Some(min_captures) = closure_min_captures {
+        min_captures
+    } else {
+        return None;
     };
 
-    // Access the capture by accessing the field within the Closure struct.
-    //
-    // We must have inferred the capture types since we are building MIR, therefore
-    // it's safe to call `upvar_tys` and we can unwrap here because
-    // we know that the capture exists and is the `capture_index`-th capture.
-    let var_ty = substs.upvar_tys().nth(capture_index).unwrap();
+    let root_variable_min_captures =
+        if let Some(captures) = closure_min_captures.get(&var_hir_id) {
+        captures
+    } else {
+        return None
+    };
 
-    let upvar_id = ty::UpvarId::new(var_hir_id, closure_def_id.expect_local());
-    let capture_kind = typeck_results.upvar_capture(upvar_id);
+    let hir_projections = convert_to_hir_projections_for_capture(projections);
 
-    Some((capture_index, var_ty, capture_kind))
+    let find_ancestor = || {
+        for (i, capture) in root_variable_min_captures.iter().enumerate() {
+            let possible_ancestor_proj_kinds =
+                capture.place.projections.iter().map(|proj| proj.kind).collect();
+            if is_ancestor_of_capture(&possible_ancestor_proj_kinds, &hir_projections) {
+                return Some((i, capture));
+            }
+        }
+        return None;
+    };
+
+
+    if let Some((idx, capture)) = find_ancestor() {
+        Some((compute_capture_idx(closure_min_captures, var_hir_id, idx), capture))
+    } else {
+        None
+    }
 }
 
-/// Takes a PlaceBuilder and resolves the upvar (if any) within it,
-/// so that the PlaceBuilder now starts from PlaceBase::Local.
+/// Takes a PlaceBuilder and resolves the upvar (if any) within it, so that the
+/// `PlaceBuilder` now starts from `PlaceBase::Local`.
 ///
-/// Returns a Result with the error being the HirId of the
-/// Upvar that was not found.
+/// Returns a Result with the error being the HirId of the Upvar that was not found.
 fn to_upvars_resolved_place_builder<'a, 'tcx>(
     from_builder: PlaceBuilder<'tcx>,
     tcx: TyCtxt<'tcx>,
@@ -104,9 +188,8 @@ fn to_upvars_resolved_place_builder<'a, 'tcx>(
                 ty::ClosureKind::FnOnce => {}
             }
 
-            let (capture_index, var_ty, capture_kind) =
-                if let Some(capture_details) = capture_matching_projections(
-                    tcx,
+            let (capture_index, capture) =
+                if let Some(capture_details) = find_capture_matching_projections(
                     typeck_results,
                     var_hir_id,
                     closure_def_id,
@@ -114,19 +197,41 @@ fn to_upvars_resolved_place_builder<'a, 'tcx>(
                 ) {
                     capture_details
                 } else {
+                    if !tcx.features().capture_disjoint_fields {
+                        bug!(
+                            "No associated capture found for {:?}[{:#?}] even though \
+                            capture_disjoint_fields isn't enabled",
+                            var_hir_id,
+                            from_builder.projection,
+                        )
+                    } else {
+                        // FIXME(project-rfc-2229#24): Handle this case properly
+                        println!(
+                            "No associated capture found for {:?}[{:#?}]",
+                            var_hir_id,
+                            from_builder.projection,
+                        )
+                    }
                     return Err(var_hir_id);
                 };
 
+            let closure_ty = typeck_results
+                .node_type(tcx.hir().local_def_id_to_hir_id(closure_def_id.expect_local()));
+            let substs = match closure_ty.kind() {
+                ty::Closure(_, substs) => ty::UpvarSubsts::Closure(substs),
+                ty::Generator(_, substs, _) => ty::UpvarSubsts::Generator(substs),
+                _ => bug!("Lowering capture for non-closure type {:?}", closure_ty)
+            };
+
+            let var_ty = substs.tupled_upvars_ty().tuple_get_field(capture_index).unwrap();
             place_builder = place_builder.field(Field::new(capture_index), var_ty);
 
-            // If the variable is captured via ByRef(Immutable/Mutable) Borrow,
-            // we need to deref it
-            place_builder = match capture_kind {
+            place_builder = match capture.info.capture_kind {
                 ty::UpvarCapture::ByRef(_) => place_builder.deref(),
                 ty::UpvarCapture::ByValue(_) => place_builder,
             };
 
-            let next_projection = 0;
+            let next_projection = capture.place.projections.len();
             let mut curr_projections = from_builder.projection;
             place_builder.projection.extend(curr_projections.drain(next_projection..));
 
