@@ -30,6 +30,8 @@
 //! then mean that all later passes would have to check for these figments
 //! and report an error, and it just seems like more mess in the end.)
 
+use std::env;
+
 use super::FnCtxt;
 
 use crate::expr_use_visitor as euv;
@@ -126,7 +128,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let mut capture_information: FxIndexMap<Place<'tcx>, ty::CaptureInfo<'tcx>> =
             Default::default();
-        if !self.tcx.features().capture_disjoint_fields {
+        if !self.tcx.features().capture_disjoint_fields && env::var("SG_NEW").is_err() {
             if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
                 for (&var_hir_id, _) in upvars.iter() {
                     let place = self.place_for_root_variable(local_def_id, var_hir_id);
@@ -383,11 +385,19 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             // after Index projections.
             let first_index_projection =
                 place.projections.split(|proj| ProjectionKind::Index == proj.kind).next();
-            let place = Place {
-                base_ty: place.base_ty,
-                base: place.base,
-                projections: first_index_projection.map_or(Vec::new(), |p| p.to_vec()),
-            };
+
+            let mut projections = first_index_projection.map_or(Vec::new(), |p| p.to_vec());
+
+            let mut last_field_projection = None;
+            for (i, proj) in projections.iter().enumerate() {
+                if matches!(proj.kind, ProjectionKind::Field(..)) {
+                    last_field_projection = Some(i);
+                }
+            }
+
+            projections.truncate(last_field_projection.map_or(0, |last| last + 1));
+
+            let place = Place { base_ty: place.base_ty, base: place.base, projections };
 
             let min_cap_list = match root_var_min_capture_list.get_mut(&var_hir_id) {
                 None => {
