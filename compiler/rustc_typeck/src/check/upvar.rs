@@ -30,6 +30,7 @@
 //! then mean that all later passes would have to check for these figments
 //! and report an error, and it just seems like more mess in the end.)
 
+use super::writeback::Resolver;
 use super::FnCtxt;
 
 use crate::expr_use_visitor as euv;
@@ -40,9 +41,11 @@ use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::{self, NestedVisitorMap, Visitor};
 use rustc_infer::infer::UpvarRegion;
 use rustc_middle::hir::place::{Place, PlaceBase, PlaceWithHirId, ProjectionKind};
+use rustc_middle::ty::fold::TypeFoldable;
 use rustc_middle::ty::{self, Ty, TyCtxt, UpvarSubsts};
 use rustc_span::sym;
 use rustc_span::{Span, Symbol};
+use std::env;
 
 /// Describe the relationship between the paths of two places
 /// eg:
@@ -92,7 +95,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         &self,
         closure_hir_id: hir::HirId,
         span: Span,
-        body: &hir::Body<'_>,
+        body: &'tcx hir::Body<'tcx>,
         capture_clause: hir::CaptureBy,
     ) {
         debug!("analyze_closure(id={:?}, body.id={:?})", closure_hir_id, body.id());
@@ -186,6 +189,19 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         self.compute_min_captures(closure_def_id, delegate);
         self.log_closure_min_capture_info(closure_def_id, span);
+
+        if env::var("SG_MIGRATIONS").is_ok() {
+            let migrations_needed = self.compute_2229_migrations_first_pass(
+                closure_def_id,
+                span,
+                capture_clause,
+                body,
+                self.typeck_results.borrow().closure_min_captures.get(&closure_def_id),
+            );
+
+            let migrations_needed_hir_id = migrations_needed.iter().map(|m| m.0).collect();
+            print_migrations(self.tcx, 1, span, &migrations_needed_hir_id);
+        }
 
         self.min_captures_to_closure_captures_bridge(closure_def_id);
 
@@ -460,6 +476,77 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
+    fn compute_2229_migrations_first_pass(
+        &self,
+        closure_def_id: DefId,
+        closure_span: Span,
+        closure_clause: hir::CaptureBy,
+        body: &'tcx hir::Body<'tcx>,
+        min_captures: Option<&ty::RootVariableMinCaptureList<'tcx>>,
+    ) -> Vec<(hir::HirId, Ty<'tcx>)> {
+        fn resolve_ty<T: TypeFoldable<'tcx>>(
+            fcx: &FnCtxt<'_, 'tcx>,
+            span: Span,
+            body: &'tcx hir::Body<'tcx>,
+            ty: T,
+        ) -> T {
+            let mut resolver = Resolver::new(fcx, &span, body);
+            ty.fold_with(&mut resolver)
+        }
+
+        let upvars = if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
+            upvars
+        } else {
+            return vec![];
+        };
+
+        let mut need_migrations = Vec::new();
+
+        for (&var_hir_id, _) in upvars.iter() {
+            let ty = resolve_ty(self, closure_span, body, self.node_ty(var_hir_id));
+
+            if !ty.needs_drop(self.tcx, self.tcx.param_env(closure_def_id.expect_local())) {
+                continue;
+            }
+
+            let root_var_min_capture_list = if let Some(root_var_min_capture_list) =
+                min_captures.and_then(|m| m.get(&var_hir_id))
+            {
+                root_var_min_capture_list
+            } else {
+                // The upvar is mentioned within the closure but no path starting from it is
+                // used.
+
+                match closure_clause {
+                    // Only migrate if closure is a move closure
+                    hir::CaptureBy::Value => need_migrations.push((var_hir_id, ty)),
+
+                    hir::CaptureBy::Ref => {}
+                }
+
+                continue;
+            };
+
+            let is_moved = root_var_min_capture_list
+                .iter()
+                .find(|capture| matches!(capture.info.capture_kind, ty::UpvarCapture::ByValue(_)))
+                .is_some();
+
+            // 1. If we capture more than one path starting at the root variabe then the root variable
+            //    isn't being captured in its entirety
+            // 2. If we only capture one path starting at the root variable, it's still possible
+            //    that it isn't the root variable completely.
+            if is_moved
+                && ((root_var_min_capture_list.len() > 1)
+                    || (root_var_min_capture_list[0].place.projections.len() > 0))
+            {
+                need_migrations.push((var_hir_id, ty));
+            }
+        }
+
+        need_migrations
+    }
+
     fn init_capture_kind(
         &self,
         capture_clause: hir::CaptureBy,
@@ -541,6 +628,23 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         }
     }
+}
+
+fn print_migrations(
+    tcx: TyCtxt<'_>,
+    pass: u32,
+    closure_span: Span,
+    need_migrations: &Vec<hir::HirId>,
+) {
+    let need_migrations_strings =
+        need_migrations.iter().map(|v| format!("{}", var_name(tcx, *v))).collect::<Vec<_>>();
+    let migrations_list_concat = need_migrations_strings.join(", ");
+
+    let migrations = format!("let ({}) = ({});", migrations_list_concat, migrations_list_concat);
+
+    tcx.sess
+        .struct_span_err(closure_span, &format!("MIGRATIONS_PASS({}): {}", pass, migrations))
+        .emit();
 }
 
 struct InferBorrowKind<'a, 'tcx> {
