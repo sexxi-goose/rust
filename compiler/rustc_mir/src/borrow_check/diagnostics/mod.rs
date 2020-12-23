@@ -6,6 +6,7 @@ use rustc_hir::def::Namespace;
 use rustc_hir::def_id::DefId;
 use rustc_hir::lang_items::LangItemGroup;
 use rustc_hir::GeneratorKind;
+use rustc_middle::hir::place::PlaceBase as HirPlaceBase;
 use rustc_middle::mir::{
     AggregateKind, Constant, Field, Local, LocalInfo, LocalKind, Location, Operand, Place,
     PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
@@ -388,7 +389,7 @@ impl<'cx, 'tcx> MirBorrowckCtxt<'cx, 'tcx> {
                     //
                     // We know the field exists so it's safe to call operator[] and `unwrap` here.
                     let (&var_id, _) =
-                        self.infcx.tcx.typeck(def_id.expect_local()).closure_captures[&def_id]
+                        self.infcx.tcx.typeck(def_id.expect_local()).closure_min_captures[&def_id]
                             .get_index(field.index())
                             .unwrap();
 
@@ -965,12 +966,20 @@ impl<'cx, 'tcx> MirBorrowckCtxt<'cx, 'tcx> {
         let expr = &self.infcx.tcx.hir().expect_expr(hir_id).kind;
         debug!("closure_span: hir_id={:?} expr={:?}", hir_id, expr);
         if let hir::ExprKind::Closure(.., body_id, args_span, _) = expr {
-            for (upvar_hir_id, place) in
-                self.infcx.tcx.typeck(def_id.expect_local()).closure_captures[&def_id]
-                    .keys()
-                    .zip(places)
+            for (captured_place, place) in self
+                .infcx
+                .tcx
+                .typeck(def_id.expect_local())
+                .closure_min_captures_flattened(def_id)
+                .zip(places)
             {
-                let span = self.infcx.tcx.upvars_mentioned(local_did)?[upvar_hir_id].span;
+                let upvar_hir_id = match captured_place.place.base {
+                    //FIXME(project-rfc-2229#8): Use better span from captured_place
+                    HirPlaceBase::Upvar(upvar_id) => upvar_id.var_path.hir_id,
+                    base => bug!("Expected upvar, found={:?}", base),
+                };
+                let span =
+                    self.infcx.tcx.upvars_mentioned(local_did)?.get(&upvar_hir_id).unwrap().span;
                 match place {
                     Operand::Copy(place) | Operand::Move(place)
                         if target_place == place.as_ref() =>
@@ -978,10 +987,6 @@ impl<'cx, 'tcx> MirBorrowckCtxt<'cx, 'tcx> {
                         debug!("closure_span: found captured local {:?}", place);
                         let body = self.infcx.tcx.hir().body(*body_id);
                         let generator_kind = body.generator_kind();
-                        let upvar_id = ty::UpvarId {
-                            var_path: ty::UpvarPath { hir_id: *upvar_hir_id },
-                            closure_expr_id: local_did,
-                        };
 
                         // If we have a more specific span available, point to that.
                         // We do this even though this span might be part of a borrow error
@@ -989,11 +994,11 @@ impl<'cx, 'tcx> MirBorrowckCtxt<'cx, 'tcx> {
                         // to a span that shows why the upvar is used in the closure,
                         // so a move-related span is as good as any (and potentially better,
                         // if the overall error is due to a move of the upvar).
-                        let usage_span =
-                            match self.infcx.tcx.typeck(local_did).upvar_capture(upvar_id) {
-                                ty::UpvarCapture::ByValue(Some(span)) => span,
-                                _ => span,
-                            };
+
+                        let usage_span = match captured_place.info.capture_kind {
+                            ty::UpvarCapture::ByValue(Some(span)) => span,
+                            _ => span,
+                        };
                         return Some((*args_span, generator_kind, usage_span));
                     }
                     _ => {}
