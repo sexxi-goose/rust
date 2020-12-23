@@ -706,9 +706,13 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
             for (&var_hir_id, min_capture_list) in closure_min_captures {
                 let upvar = upvars[&var_hir_id];
                 for captured_place in min_capture_list {
+                    let span = match captured_place.info.expr_id {
+                        Some(expr_id) => self.ir.tcx.hir().span(expr_id),
+                        None => upvar.span,
+                    };
                     match captured_place.info.capture_kind {
                         ty::UpvarCapture::ByRef(_) => {
-                            let var = self.variable(var_hir_id, upvar.span);
+                            let var = self.variable(var_hir_id, span);
                             self.acc(self.exit_ln, var, ACC_READ | ACC_USE);
                         }
                         ty::UpvarCapture::ByValue(_) => {}
@@ -1408,14 +1412,17 @@ impl<'tcx> Liveness<'_, 'tcx> {
                     ty::UpvarCapture::ByValue(_) => {}
                     ty::UpvarCapture::ByRef(..) => continue,
                 };
-
+                let span = match captured_place.info.expr_id {
+                    Some(expr_id) => self.ir.tcx.hir().span(expr_id),
+                    None => upvar.span,
+                };
                 if self.used_on_entry(entry_ln, var) {
                     if !self.live_on_entry(entry_ln, var) {
                         if let Some(name) = self.should_warn(var) {
                             self.ir.tcx.struct_span_lint_hir(
                                 lint::builtin::UNUSED_ASSIGNMENTS,
                                 var_hir_id,
-                                vec![upvar.span],
+                                vec![span],
                                 |lint| {
                                     lint.build(&format!(
                                         "value captured by `{}` is never read",
@@ -1432,7 +1439,7 @@ impl<'tcx> Liveness<'_, 'tcx> {
                         self.ir.tcx.struct_span_lint_hir(
                             lint::builtin::UNUSED_VARIABLES,
                             var_hir_id,
-                            vec![upvar.span],
+                            vec![span],
                             |lint| {
                                 lint.build(&format!("unused variable: `{}`", name))
                                     .help("did you mean to capture by reference instead?")
