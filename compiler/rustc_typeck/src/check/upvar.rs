@@ -40,12 +40,15 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::{self, NestedVisitorMap, Visitor};
 use rustc_infer::infer::UpvarRegion;
-use rustc_middle::hir::place::{Place, PlaceBase, PlaceWithHirId, ProjectionKind};
+use rustc_middle::hir::place::{Place, PlaceBase, PlaceWithHirId, Projection, ProjectionKind};
 use rustc_middle::ty::fold::TypeFoldable;
 use rustc_middle::ty::{self, Ty, TyCtxt, UpvarSubsts};
 use rustc_session::lint;
 use rustc_span::sym;
 use rustc_span::{Span, Symbol};
+
+use rustc_index::vec::Idx;
+use rustc_target::abi::VariantIdx;
 
 /// Describe the relationship between the paths of two places
 /// eg:
@@ -170,12 +173,16 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 self.typeck_results.borrow().closure_min_captures.get(&closure_def_id),
             );
 
-            if !need_migrations.is_empty() {
-                let need_migrations_hir_id =
-                    need_migrations.iter().map(|m| m.0).collect::<Vec<_>>();
+            let need_migrations = self.compute_2229_migrations_precise_pass(
+                closure_def_id,
+                span,
+                self.typeck_results.borrow().closure_min_captures.get(&closure_def_id),
+                &migrations_needed,
+            );
 
+            if !need_migrations.is_empty() {
                 let migrations_text =
-                    migration_suggestion_for_2229(self.tcx, &need_migrations_hir_id);
+                    migration_suggestion_for_2229(self.tcx, &need_migrations);
 
                 self.tcx.struct_span_lint_hir(
                     lint::builtin::DISJOINT_CAPTURE_DROP_REORDER,
@@ -589,6 +596,267 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         need_migrations
     }
+
+    fn compute_2229_migrations_precise_pass(
+        &self,
+        closure_def_id: DefId,
+        closure_span: Span,
+        min_captures: Option<&ty::RootVariableMinCaptureList<'tcx>>,
+        need_migrations: &Vec<(hir::HirId, Ty<'tcx>)>,
+    ) -> Vec<hir::HirId> {
+        let min_captures = if let Some(min_captures) = min_captures {
+            min_captures
+        } else {
+            let need_migrations = need_migrations.iter().map(|m| m.0).collect();
+            print_migrations(self.tcx, 2, closure_span, &need_migrations);
+            return need_migrations;
+        };
+
+        // Need migrations -- second pass
+        let mut need_migrations_2 = Vec::new();
+
+        for (hir_id, ty) in need_migrations {
+            if let Some(capture_list) = min_captures.get(hir_id) {
+                // Now be smart and see if any of the paths not captured starting at this hir_id,
+                // need a dtor
+                let projections_list = capture_list
+                    .iter()
+                    .map(|captured_place| captured_place.place.projections.as_slice())
+                    .collect();
+                if self.has_interesting_drop_outside_of_captures(
+                    closure_def_id,
+                    ty,
+                    projections_list,
+                ) {
+                    need_migrations_2.push(*hir_id);
+                }
+            } else {
+                need_migrations_2.push(*hir_id);
+            }
+        }
+
+        need_migrations_2
+    }
+
+    /// This is a helper function to `compute_2229_migrations_precise_pass`. Provided the type
+    /// of a root variable and a list of captured paths starting at this root variable (expressed
+    /// using list of `Projection` slices), it returns true if the there is a path that is not
+    /// captured starting at this root variable that implements Drop.
+    ///
+    /// **Ideally** this will return true only for interesting drops. A Drop is interesting if it's
+    /// defined by the user and not by stdlib.
+    ///
+    /// The way this function works is at a given call it looks at type `base_path_ty` of some base
+    /// path say P and then vector of projection slices which represent the different captures
+    /// starting off of P.
+    ///
+    /// This will make more sense with an example:
+    ///
+    /// ```rust
+    /// #![feature(capture_disjoint_fields)]
+    ///
+    /// struct FancyInteger(i32); // This implements Drop
+    ///
+    /// struct Point { x: FancyInteger, y: FancyInteger }
+    /// struct Color;
+    ///
+    /// struct Wrapper { p: &Point, c: Color }
+    ///
+    /// fn f(w: Wrapper) {
+    ///   let c = || {
+    ///       // Closure captures w.p.x and w.c by move.
+    ///   };
+    ///
+    ///   c();
+    /// }
+    /// ```
+    ///
+    /// If `capture_disjoint_fields` wasn't enabled the closure would've moved `w` instead of the
+    /// precise paths. If we look closely `w.p.y` isn't captured which implements Drop and
+    /// therefore Drop ordering would change and we want this function to return true.
+    ///
+    /// Call stack to figure out if we need to migrate for `w` would look as follows:
+    ///
+    /// Our initial base path is just `w`, and the paths captured from it are `w[p, *, x]` and
+    /// `w[c]` (* = Deref).
+    /// Notation:
+    /// - Ty(place): Type of place
+    /// - `(a, b)`: Represents the function parameters `base_path_ty` and `captured_projs`
+    /// respectively.
+    /// ```
+    ///                   (Ty(w), [ &[p, *, x], &[c] ])
+    ///                                  |
+    ///                     ----------------------------
+    ///                     |                          |
+    ///                     v                          v
+    ///         (Ty(w.p), [ &[*, x] ])          (Ty(w.c), [ &[] ]) // IMP 1
+    ///                     |                          |
+    ///                     v                          v
+    ///         (Ty(*w.p), [ &[x] ])                 false
+    ///                     |
+    ///                     |
+    ///           -------------------------------
+    ///           |                             |
+    ///           v                             v
+    ///      (Ty((*w.p).x), [ &[] ])     (Ty((*w.p).y), []) // IMP 2
+    ///           |                             |
+    ///           v                             v
+    ///         false                     NeedsDrop(Ty(*w.p.y))
+    ///                                         |
+    ///                                         v
+    ///                                       true
+    /// ```
+    ///
+    /// IMP 1 `(Ty(w.c), [ &[] ])`: Notice the single empty slice inside `captured_projs`.
+    ///                             This implies that the `w.c` is completely captured by the closure.
+    ///                             Since drop for this path will be called when the closure is
+    ///                             dropped we don't need to migrate for it.
+    ///
+    /// IMP 2 `(Ty((*w.p).y), [])`: Notice that `captured_projs` is empty. This implies that this
+    ///                             path wasn't captured by the closure. Also note that even
+    ///                             though we didn't capture this path, the function visits it,
+    ///                             which is kind of the point of this function. We then return
+    ///                             if the type of `w.p.y` implements Drop, which in this case is
+    ///                             true.
+    ///
+    fn has_interesting_drop_outside_of_captures(
+        &self,
+        closure_def_id: DefId,
+        base_path_ty: Ty<'tcx>,
+        captured_projs: Vec<&[Projection<'tcx>]>,
+    ) -> bool {
+        let needs_drop = |ty: Ty<'tcx>| {
+            ty.needs_drop(self.tcx, self.tcx.param_env(closure_def_id.expect_local()))
+        };
+
+        // If there is a case where no projection is applied on top of current place
+        // then these must be exactly one capture corresponding to such a case.
+        // Otherwise this breaks the concept of min capture,
+        // eg. If `a.b` is captured and we are processing `a.b`, then we can't have the closure also
+        //     capture `a.b.c`, because that voilates min capture.
+        if captured_projs.iter().any(|projs| projs.is_empty()) {
+            assert_eq!(captured_projs.len(), 1);
+            // The place is captured entirely, so doesn't matter if needs dtor, it will get run
+            // with the closure regardless.
+            return false;
+        }
+
+        match base_path_ty.kind() {
+            _ if captured_projs.is_empty() => needs_drop(base_path_ty),
+
+            // Observations:
+            // - `captured_projs` is not empty. Therefore we can call
+            //   `captured_projs.first().unwrap()` safely.
+            // - All entries in `captured_projs` have atleast one projection.
+            //   Therefore we can call `captured_projs.first().unwrap().first().unwrap()` safely.
+            ty::Adt(def, _) if def.is_box() => {
+                // We must deref to access paths on top of a Box.
+                assert!(
+                    captured_projs
+                        .iter()
+                        .all(|projs| matches!(projs.first().unwrap().kind, ProjectionKind::Deref))
+                );
+
+                let next_ty = captured_projs.first().unwrap().first().unwrap().ty;
+                let captured_projs = captured_projs.iter().map(|projs| &projs[1..]).collect();
+                self.has_interesting_drop_outside_of_captures(
+                    closure_def_id,
+                    next_ty,
+                    captured_projs,
+                )
+            }
+
+            ty::Adt(def, substs) => {
+                // Multi-varaint enums are captured in entirety,
+                // which would've been handled in the case of single empty slice in `captured_projs`.
+                assert_eq!(def.variants.len(), 1);
+
+                // Only Field projections can be applied to a non-box Adt.
+                assert!(
+                    captured_projs.iter().all(|projs| matches!(
+                        projs.first().unwrap().kind,
+                        ProjectionKind::Field(..)
+                    ))
+                );
+                def.variants.get(VariantIdx::new(0)).unwrap().fields.iter().enumerate().any(
+                    |(i, field)| {
+                        let paths_using_field = captured_projs
+                            .iter()
+                            .filter_map(|projs| {
+                                if let ProjectionKind::Field(field_idx, _) =
+                                    projs.first().unwrap().kind
+                                {
+                                    if (field_idx as usize) == i { Some(&projs[1..]) } else { None }
+                                } else {
+                                    unreachable!();
+                                }
+                            })
+                            .collect();
+
+                        let after_field_ty = field.ty(self.tcx, substs);
+                        self.has_interesting_drop_outside_of_captures(
+                            closure_def_id,
+                            after_field_ty,
+                            paths_using_field,
+                        )
+                    },
+                )
+            }
+
+            ty::Tuple(..) => {
+                // Only Field projections can be applied to a tuple.
+                assert!(
+                    captured_projs.iter().all(|projs| matches!(
+                        projs.first().unwrap().kind,
+                        ProjectionKind::Field(..)
+                    ))
+                );
+
+                base_path_ty.tuple_fields().enumerate().any(|(i, element_ty)| {
+                    let paths_using_field = captured_projs
+                        .iter()
+                        .filter_map(|projs| {
+                            if let ProjectionKind::Field(field_idx, _) = projs.first().unwrap().kind
+                            {
+                                if (field_idx as usize) == i { Some(&projs[1..]) } else { None }
+                            } else {
+                                unreachable!();
+                            }
+                        })
+                        .collect();
+
+                    self.has_interesting_drop_outside_of_captures(
+                        closure_def_id,
+                        element_ty,
+                        paths_using_field,
+                    )
+                })
+            }
+
+            ty::Ref(_, deref_ty, _) => {
+                // Only Derefs can be applied to a Ref
+                assert!(
+                    captured_projs
+                        .iter()
+                        .all(|projs| matches!(projs.first().unwrap().kind, ProjectionKind::Deref))
+                );
+
+                let captured_projs = captured_projs.iter().map(|projs| &projs[1..]).collect();
+                self.has_interesting_drop_outside_of_captures(
+                    closure_def_id,
+                    deref_ty,
+                    captured_projs,
+                )
+            }
+
+            // Unsafe Ptrs are captured in their entirety, which would've have been handled in
+            // the case of single empty slice in `captured_projs`.
+            ty::RawPtr(..) => unreachable!(),
+
+            _ => unreachable!(),
+        }
+    }
+
 
     fn init_capture_kind(
         &self,
