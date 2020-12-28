@@ -18,7 +18,6 @@ use rustc_span::symbol::{sym, Symbol};
 use rustc_target::abi::{Abi, LayoutOf, Scalar, Size, VariantIdx, Variants};
 
 use std::hash::Hash;
-use std::vec::Vec;
 
 use super::{
     CheckInAllocMsg, GlobalAlloc, InterpCx, InterpResult, MPlaceTy, Machine, MemPlaceMeta, OpTy,
