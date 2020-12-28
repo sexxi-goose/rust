@@ -974,10 +974,10 @@ impl<'cx, 'tcx> MirBorrowckCtxt<'cx, 'tcx> {
                 .zip(places)
             {
                 let upvar_hir_id = match captured_place.place.base {
-                    //FIXME(project-rfc-2229#8): Use better span from captured_place
                     HirPlaceBase::Upvar(upvar_id) => upvar_id.var_path.hir_id,
                     base => bug!("Expected upvar, found={:?}", base),
                 };
+                //FIXME(project-rfc-2229#8): Use better span from captured_place
                 let span =
                     self.infcx.tcx.upvars_mentioned(local_did)?.get(&upvar_hir_id).unwrap().span;
                 match place {
