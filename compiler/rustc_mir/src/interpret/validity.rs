@@ -18,6 +18,7 @@ use rustc_span::symbol::{sym, Symbol};
 use rustc_target::abi::{Abi, LayoutOf, Scalar, Size, VariantIdx, Variants};
 
 use std::hash::Hash;
+use std::vec::Vec;
 
 use super::{
     CheckInAllocMsg, GlobalAlloc, InterpCx, InterpResult, MPlaceTy, Machine, MemPlaceMeta, OpTy,
@@ -104,7 +105,7 @@ pub enum PathElem {
     Field(Symbol),
     Variant(Symbol),
     GeneratorState(VariantIdx),
-    CapturedVar(Symbol),
+    CapturedPlace(Symbol),
     ArrayElem(usize),
     TupleElem(usize),
     Deref,
@@ -163,7 +164,7 @@ fn write_path(out: &mut String, path: &Vec<PathElem>) {
             Variant(name) => write!(out, ".<enum-variant({})>", name),
             GeneratorTag => write!(out, ".<generator-tag>"),
             GeneratorState(idx) => write!(out, ".<generator-state({})>", idx.index()),
-            CapturedVar(name) => write!(out, ".<captured-var({})>", name),
+            CapturedPlace(name) => write!(out, ".<captured-var({})>", name),
             TupleElem(idx) => write!(out, ".{}", idx),
             ArrayElem(idx) => write!(out, "[{}]", idx),
             // `.<deref>` does not match Rust syntax, but it is more readable for long paths -- and
@@ -243,7 +244,8 @@ impl<'rt, 'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> ValidityVisitor<'rt, 'mir, '
                 let mut name = None;
                 if let Some(def_id) = def_id.as_local() {
                     let tables = self.ecx.tcx.typeck(def_id);
-                    if let Some(upvars) = tables.closure_captures.get(&def_id.to_def_id()) {
+
+                    if let Some(upvars) = tables.closure_min_captures.get(&def_id.to_def_id()) {
                         // Sometimes the index is beyond the number of upvars (seen
                         // for a generator).
                         if let Some((&var_hir_id, _)) = upvars.get_index(field) {
@@ -257,7 +259,7 @@ impl<'rt, 'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> ValidityVisitor<'rt, 'mir, '
                     }
                 }
 
-                PathElem::CapturedVar(name.unwrap_or_else(|| {
+                PathElem::CapturedPlace(name.unwrap_or_else(|| {
                     // Fall back to showing the field index.
                     sym::integer(field)
                 }))
