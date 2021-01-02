@@ -722,6 +722,15 @@ pub fn place_to_string_for_capture(tcx: TyCtxt<'tcx>, place: &HirPlace<'tcx>) ->
     curr_string.to_string()
 }
 
+impl CapturedPlace<'tcx> {
+    pub fn get_root_variable(&self) -> hir::HirId {
+        match self.place.base {
+            HirPlaceBase::Upvar(upvar_id) => upvar_id.var_path.hir_id,
+            base => bug!("Expected upvar, found={:?}", base),
+        }
+    }
+}
+
 /// Part of `MinCaptureInformationMap`; describes the capture kind (&, &mut, move)
 /// for a particular capture as well as identifying the part of the source code
 /// that triggered this capture to occur.
