@@ -77,7 +77,7 @@ macro_rules! throw_validation_failure {
 ///
 macro_rules! try_validation {
     ($e:expr, $where:expr,
-     $( $( $p:pat )|+ => { $( $what_fmt:expr ),+ } $( expected { $( $expected_fmt:expr ),+ } )? ),+ $(,)?
+    $( $( $p:pat )|+ => { $( $what_fmt:expr ),+ } $( expected { $( $expected_fmt:expr ),+ } )? ),+ $(,)?
     ) => {{
         match $e {
             Ok(x) => x,
@@ -104,7 +104,7 @@ pub enum PathElem {
     Field(Symbol),
     Variant(Symbol),
     GeneratorState(VariantIdx),
-    CapturedPlace(Symbol),
+    CapturedVar(Symbol),
     ArrayElem(usize),
     TupleElem(usize),
     Deref,
@@ -163,7 +163,7 @@ fn write_path(out: &mut String, path: &Vec<PathElem>) {
             Variant(name) => write!(out, ".<enum-variant({})>", name),
             GeneratorTag => write!(out, ".<generator-tag>"),
             GeneratorState(idx) => write!(out, ".<generator-state({})>", idx.index()),
-            CapturedPlace(name) => write!(out, ".<captured-var({})>", name),
+            CapturedVar(name) => write!(out, ".<captured-var({})>", name),
             TupleElem(idx) => write!(out, ".{}", idx),
             ArrayElem(idx) => write!(out, "[{}]", idx),
             // `.<deref>` does not match Rust syntax, but it is more readable for long paths -- and
@@ -241,24 +241,24 @@ impl<'rt, 'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> ValidityVisitor<'rt, 'mir, '
             // generators and closures.
             ty::Closure(def_id, _) | ty::Generator(def_id, _, _) => {
                 let mut name = None;
-                if let Some(def_id) = def_id.as_local() {
-                    let tables = self.ecx.tcx.typeck(def_id);
-
-                    if let Some(upvars) = tables.closure_min_captures.get(&def_id.to_def_id()) {
+                if let Some(local_def_id) = def_id.as_local() {
+                    let tables = self.ecx.tcx.typeck(local_def_id);
+                    if let Some(captured_place) =
+                        tables.closure_min_captures_flattened(*def_id).nth(field)
+                    {
                         // Sometimes the index is beyond the number of upvars (seen
                         // for a generator).
-                        if let Some((&var_hir_id, _)) = upvars.get_index(field) {
-                            let node = self.ecx.tcx.hir().get(var_hir_id);
-                            if let hir::Node::Binding(pat) = node {
-                                if let hir::PatKind::Binding(_, _, ident, _) = pat.kind {
-                                    name = Some(ident.name);
-                                }
+                        let var_hir_id = captured_place.get_root_variable();
+                        let node = self.ecx.tcx.hir().get(var_hir_id);
+                        if let hir::Node::Binding(pat) = node {
+                            if let hir::PatKind::Binding(_, _, ident, _) = pat.kind {
+                                name = Some(ident.name);
                             }
                         }
                     }
                 }
 
-                PathElem::CapturedPlace(name.unwrap_or_else(|| {
+                PathElem::CapturedVar(name.unwrap_or_else(|| {
                     // Fall back to showing the field index.
                     sym::integer(field)
                 }))
