@@ -291,6 +291,7 @@ impl<'tcx> PlaceBuilder<'tcx> {
         }
     }
 
+    /// ROX: Function that will be called when we really do need a place
     fn expect_upvars_resolved<'a>(
         self,
         tcx: TyCtxt<'tcx>,

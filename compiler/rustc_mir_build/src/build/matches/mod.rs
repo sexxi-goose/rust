@@ -1,3 +1,7 @@
+// ROX: this folder contains all code for handling patterns, including exhaustiveness checking etc.
+// We want to be careful ^^'
+
+
 //! Code related to match expressions. These are sufficiently complex to
 //! warrant their own module and submodules. :) This main module includes the
 //! high-level algorithm, the submodules contain the details.
@@ -387,6 +391,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
 
             _ => {
+                // Converts the destruct pattern into a place
+                //
+                // We don't want to convert to a place right away
+                // because in case of such pattern inside a closure, the projections matching a
+                // captured place might have not been applied
+                //
+                // We want to use a place builder; Maybe use `as_place_builder`
                 let place = unpack!(block = self.as_place(block, initializer));
                 self.place_into_pattern(block, irrefutable_pat, place, true)
             }
@@ -397,6 +408,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         &mut self,
         block: BasicBlock,
         irrefutable_pat: Pat<'tcx>,
+        // This would need to be a PlaceBuilder for the initializer
         initializer: Place<'tcx>,
         set_match_place: bool,
     ) -> BlockAnd<()> {
