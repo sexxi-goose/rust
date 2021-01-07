@@ -772,30 +772,29 @@ impl<'a, 'tcx> RegionCtxt<'a, 'tcx> {
         // A by-reference upvar can't be borrowed for longer than the
         // upvar is borrowed from the environment.
         let closure_local_def_id = upvar_id.closure_expr_id;
-        let upvar_capture = self
+        for captured_place in self
             .typeck_results
             .borrow()
-            .closure_min_captures_flattened(closure_local_def_id.to_def_id())
-            .find(|captured_place| match captured_place.place.base {
-                PlaceBase::Upvar(id) => id == upvar_id,
-                _ => false,
-            })
-            .unwrap()
-            .info
-            .capture_kind;
-        match upvar_capture {
-            ty::UpvarCapture::ByRef(upvar_borrow) => {
-                self.sub_regions(
-                    infer::ReborrowUpvar(span, upvar_id),
-                    borrow_region,
-                    upvar_borrow.region,
-                );
-                if let ty::ImmBorrow = upvar_borrow.kind {
-                    debug!("link_upvar_region: capture by shared ref");
-                    return;
+            .closure_min_captures
+            .get(&closure_local_def_id.to_def_id())
+            .and_then(|root_var_min_cap| root_var_min_cap.get(&upvar_id.var_path.hir_id))
+            .into_iter()
+            .flatten()
+        {
+            match captured_place.info.capture_kind {
+                ty::UpvarCapture::ByRef(upvar_borrow) => {
+                    self.sub_regions(
+                        infer::ReborrowUpvar(span, upvar_id),
+                        borrow_region,
+                        upvar_borrow.region,
+                    );
+                    if let ty::ImmBorrow = upvar_borrow.kind {
+                        debug!("link_upvar_region: capture by shared ref");
+                        return;
+                    }
                 }
+                ty::UpvarCapture::ByValue(_) => {}
             }
-            ty::UpvarCapture::ByValue(_) => {}
         }
         let fn_hir_id = self.tcx.hir().local_def_id_to_hir_id(closure_local_def_id);
         let ty = self.resolve_node_type(fn_hir_id);
