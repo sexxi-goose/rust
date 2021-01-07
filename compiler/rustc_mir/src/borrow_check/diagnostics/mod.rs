@@ -6,7 +6,6 @@ use rustc_hir::def::Namespace;
 use rustc_hir::def_id::DefId;
 use rustc_hir::lang_items::LangItemGroup;
 use rustc_hir::GeneratorKind;
-use rustc_middle::hir::place::PlaceBase as HirPlaceBase;
 use rustc_middle::mir::{
     AggregateKind, Constant, Field, Local, LocalInfo, LocalKind, Location, Operand, Place,
     PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
@@ -973,13 +972,9 @@ impl<'cx, 'tcx> MirBorrowckCtxt<'cx, 'tcx> {
                 .closure_min_captures_flattened(def_id)
                 .zip(places)
             {
-                let upvar_hir_id = match captured_place.place.base {
-                    HirPlaceBase::Upvar(upvar_id) => upvar_id.var_path.hir_id,
-                    base => bug!("Expected upvar, found={:?}", base),
-                };
+                let upvar_hir_id = captured_place.get_root_variable();
                 //FIXME(project-rfc-2229#8): Use better span from captured_place
-                let span =
-                    self.infcx.tcx.upvars_mentioned(local_did)?.get(&upvar_hir_id).unwrap().span;
+                let span = self.infcx.tcx.upvars_mentioned(local_did)?[&upvar_hir_id].span;
                 match place {
                     Operand::Copy(place) | Operand::Move(place)
                         if target_place == place.as_ref() =>
