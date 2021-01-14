@@ -1,0 +1,64 @@
+error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, or an operator, found keyword `move`
+  --> $DIR/liveness-upvars-precise-captures.rs:38:19
+   |
+LL |     let _ = async move {
+   |                   ^^^^ expected one of 7 possible tokens
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-upvars-precise-captures.rs:13:16
+   |
+LL |         last = Some(s);
+   |                ^^^^^^^ expected struct `Point`, found enum `Option`
+   |
+   = note: expected struct `Point`
+                found enum `Option<_>`
+
+error[E0599]: no method named `unwrap` found for struct `Point` in the current scope
+  --> $DIR/liveness-upvars-precise-captures.rs:19:15
+   |
+LL | struct Point {
+   | ------------ method `unwrap` not found for this
+...
+LL |     dbg!(last.unwrap());
+   |               ^^^^^^ method not found in `Point`
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-upvars-precise-captures.rs:76:17
+   |
+LL |             d = Some(Point { x: 1, y: 20 });
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
+   |
+   = note: expected struct `Point`
+                found enum `Option<Point>`
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-upvars-precise-captures.rs:77:17
+   |
+LL |             d = Some(Point { x: 10, y: 2 });
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
+   |
+   = note: expected struct `Point`
+                found enum `Option<Point>`
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-upvars-precise-captures.rs:80:17
+   |
+LL |             e = Some(Point { x: 1, y: 20 });
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
+   |
+   = note: expected struct `Point`
+                found enum `Option<Point>`
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-upvars-precise-captures.rs:82:17
+   |
+LL |             e = Some(Point { x: 10, y: 2 });
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
+   |
+   = note: expected struct `Point`
+                found enum `Option<Point>`
+
+error: aborting due to 7 previous errors
+
+Some errors have detailed explanations: E0308, E0599.
+For more information about an error, try `rustc --explain E0308`.
