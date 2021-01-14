@@ -1,6 +1,8 @@
+// run-pass
 #![warn(unused)]
-#![allow(unreachable_code)]
+
 #![feature(capture_disjoint_fields)]
+//~^ WARNING: the feature `capture_disjoint_fields` is incomplete
 
 #[derive(Debug)]
 struct Point<'a> {
@@ -10,13 +12,15 @@ struct Point<'a> {
 
 pub fn unintentional_copy_one() {
     let mut last = Point{ x:1, y:None };
-    let mut f = |s| {
-        last.y = Some(s); 
+    let mut f = move |s| {
+        last.y = Some(s);
     };
     f("a");
     f("b");
     f("c");
-    dbg!(last.y.unwrap());
+
 }
 
-fn main() {}
+fn main() {
+    unintentional_copy_one();
+}

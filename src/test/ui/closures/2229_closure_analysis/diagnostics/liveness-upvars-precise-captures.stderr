@@ -1,64 +1,26 @@
-error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, or an operator, found keyword `move`
-  --> $DIR/liveness-upvars-precise-captures.rs:38:19
+warning: the feature `capture_disjoint_fields` is incomplete and may not be safe to use and/or cause compiler crashes
+  --> $DIR/liveness-upvars-precise-captures.rs:4:12
    |
-LL |     let _ = async move {
-   |                   ^^^^ expected one of 7 possible tokens
+LL | #![feature(capture_disjoint_fields)]
+   |            ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(incomplete_features)]` on by default
+   = note: see issue #53488 <https://github.com/rust-lang/rust/issues/53488> for more information
 
-error[E0308]: mismatched types
-  --> $DIR/liveness-upvars-precise-captures.rs:13:16
+warning: variable does not need to be mutable
+  --> $DIR/liveness-upvars-precise-captures.rs:14:9
    |
-LL |         last = Some(s);
-   |                ^^^^^^^ expected struct `Point`, found enum `Option`
+LL |     let mut last = Point{ x:1, y:None };
+   |         ----^^^^
+   |         |
+   |         help: remove this `mut`
    |
-   = note: expected struct `Point`
-                found enum `Option<_>`
+note: the lint level is defined here
+  --> $DIR/liveness-upvars-precise-captures.rs:2:9
+   |
+LL | #![warn(unused)]
+   |         ^^^^^^
+   = note: `#[warn(unused_mut)]` implied by `#[warn(unused)]`
 
-error[E0599]: no method named `unwrap` found for struct `Point` in the current scope
-  --> $DIR/liveness-upvars-precise-captures.rs:19:15
-   |
-LL | struct Point {
-   | ------------ method `unwrap` not found for this
-...
-LL |     dbg!(last.unwrap());
-   |               ^^^^^^ method not found in `Point`
+warning: 2 warnings emitted
 
-error[E0308]: mismatched types
-  --> $DIR/liveness-upvars-precise-captures.rs:76:17
-   |
-LL |             d = Some(Point { x: 1, y: 20 });
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
-   |
-   = note: expected struct `Point`
-                found enum `Option<Point>`
-
-error[E0308]: mismatched types
-  --> $DIR/liveness-upvars-precise-captures.rs:77:17
-   |
-LL |             d = Some(Point { x: 10, y: 2 });
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
-   |
-   = note: expected struct `Point`
-                found enum `Option<Point>`
-
-error[E0308]: mismatched types
-  --> $DIR/liveness-upvars-precise-captures.rs:80:17
-   |
-LL |             e = Some(Point { x: 1, y: 20 });
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
-   |
-   = note: expected struct `Point`
-                found enum `Option<Point>`
-
-error[E0308]: mismatched types
-  --> $DIR/liveness-upvars-precise-captures.rs:82:17
-   |
-LL |             e = Some(Point { x: 10, y: 2 });
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected struct `Point`, found enum `Option`
-   |
-   = note: expected struct `Point`
-                found enum `Option<Point>`
-
-error: aborting due to 7 previous errors
-
-Some errors have detailed explanations: E0308, E0599.
-For more information about an error, try `rustc --explain E0308`.
