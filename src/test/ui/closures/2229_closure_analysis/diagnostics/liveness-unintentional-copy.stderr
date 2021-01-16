@@ -1,0 +1,60 @@
+warning: the feature `capture_disjoint_fields` is incomplete and may not be safe to use and/or cause compiler crashes
+  --> $DIR/liveness-unintentional-copy.rs:1:12
+   |
+LL | #![feature(capture_disjoint_fields)]
+   |            ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(incomplete_features)]` on by default
+   = note: see issue #53488 <https://github.com/rust-lang/rust/issues/53488> for more information
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-unintentional-copy.rs:17:7
+   |
+LL |     f(2);
+   |       ^
+   |       |
+   |       expected enum `Option`, found integer
+   |       help: try using a variant of the expected enum: `Some(2)`
+   |
+   = note: expected enum `Option<i32>`
+              found type `{integer}`
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-unintentional-copy.rs:18:7
+   |
+LL |     f(3);
+   |       ^
+   |       |
+   |       expected enum `Option`, found integer
+   |       help: try using a variant of the expected enum: `Some(3)`
+   |
+   = note: expected enum `Option<i32>`
+              found type `{integer}`
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-unintentional-copy.rs:19:7
+   |
+LL |     f(4);
+   |       ^
+   |       |
+   |       expected enum `Option`, found integer
+   |       help: try using a variant of the expected enum: `Some(4)`
+   |
+   = note: expected enum `Option<i32>`
+              found type `{integer}`
+
+error[E0308]: mismatched types
+  --> $DIR/liveness-unintentional-copy.rs:23:32
+   |
+LL |     let mut sum = MyStruct{ a: 1, b: 0};
+   |                                ^
+   |                                |
+   |                                expected enum `Option`, found integer
+   |                                help: try using a variant of the expected enum: `Some(1)`
+   |
+   = note: expected enum `Option<i32>`
+              found type `{integer}`
+
+error: aborting due to 4 previous errors; 1 warning emitted
+
+For more information about this error, try `rustc --explain E0308`.
