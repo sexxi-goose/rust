@@ -56,6 +56,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
         wbcx.visit_body(body);
         wbcx.visit_min_capture_map();
+        // write the results into the final typechk tables. Make sure to call self.resolve
+        // otherwise u might get Can't hash errors
         wbcx.visit_upvar_capture_map();
         wbcx.visit_closures();
         wbcx.visit_liberated_fn_sigs();

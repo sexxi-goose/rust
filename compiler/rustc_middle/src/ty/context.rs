@@ -423,6 +423,9 @@ pub struct TypeckResults<'tcx> {
     /// see `MinCaptureInformationMap` for more details.
     pub closure_min_captures: ty::MinCaptureInformationMap<'tcx>,
 
+    /// ROX: add a closure_fake_reads struct
+    /// HashMap<ClosureDefId, HashSet<Place>>
+
     /// Stores the type, expression, span and optional scope span of all types
     /// that are live across the yield of this generator (if a generator).
     pub generator_interior_types: ty::Binder<Vec<GeneratorInteriorTypeCause<'tcx>>>,

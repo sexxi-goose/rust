@@ -223,6 +223,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let final_tupled_upvars_type = self.tcx.mk_tup(final_upvar_tys.iter());
         self.demand_suptype(span, substs.tupled_upvars_ty(), final_tupled_upvars_type);
 
+        // write the results out to
+        // self.typchk_results
+
+
         // If we are also inferred the closure kind here,
         // process any deferred resolutions.
         let deferred_call_resolutions = self.remove_deferred_call_resolutions(closure_def_id);
@@ -600,6 +604,8 @@ struct InferBorrowKind<'a, 'tcx> {
     /// Place { V1, [ProjectionKind::Field(Index=0, Variant=0)] } : CaptureKind { E1, ImmutableBorrow }
     /// Place { V1, [ProjectionKind::Field(Index=1, Variant=0)] } : CaptureKind { E2, MutableBorrow }
     capture_information: FxIndexMap<Place<'tcx>, ty::CaptureInfo<'tcx>>,
+
+    fake_reads: FxHashSet<Place> // these need to be fake read.
 }
 
 impl<'a, 'tcx> InferBorrowKind<'a, 'tcx> {
@@ -836,6 +842,9 @@ impl<'a, 'tcx> InferBorrowKind<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> euv::Delegate<'tcx> for InferBorrowKind<'a, 'tcx> {
+    // ROX: Implement fake_read which will get called from ExprUseVisitor
+    // self.fake_reads.insert(place)
+
     fn consume(
         &mut self,
         place_with_id: &PlaceWithHirId<'tcx>,

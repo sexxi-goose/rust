@@ -427,7 +427,6 @@ dependencies = [
  "remove_dir_all",
  "serde_json",
  "tar",
- "toml",
  "url 2.1.1",
 ]
 
@@ -4431,7 +4430,7 @@ dependencies = [
 
 [[package]]
 name = "rustfmt-nightly"
-version = "1.4.32"
+version = "1.4.31"
 dependencies = [
  "annotate-snippets 0.6.1",
  "anyhow",
@@ -5378,7 +5377,7 @@ dependencies = [
  "chrono",
  "lazy_static",
  "matchers",
- "parking_lot 0.11.0",
+ "parking_lot 0.9.0",
  "regex",
  "serde",
  "serde_json",

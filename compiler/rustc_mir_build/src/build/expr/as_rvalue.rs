@@ -225,6 +225,15 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         }
                     })
                     .collect();
+
+                // For this closure introduce fake reads based on the the new data we wrote in
+                // typeck results. Note that the fake reads are introduced into MIR but not into
+                // the closure operands/ aggregate created.
+                //
+                // It's possible that we are creating a nested closure here and therefore weren't
+                // able to introduce fake reads in our parent, ensure that this an UpvarRef.
+                // Because at some point our parent probably introduced a fake read for this place.
+
                 let result = match substs {
                     UpvarSubsts::Generator(substs) => {
                         // We implicitly set the discriminant to 0. See

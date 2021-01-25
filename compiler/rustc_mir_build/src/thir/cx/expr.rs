@@ -395,6 +395,7 @@ fn make_mirror_unadjusted<'a, 'tcx>(
                 .zip(substs.upvar_tys())
                 .map(|(captured_place, ty)| capture_upvar(cx, expr, captured_place, ty))
                 .collect();
+            // Then introduce fake reads based on what we collected during typeck
             ExprKind::Closure { closure_id: def_id, substs, upvars, movability }
         }
 
