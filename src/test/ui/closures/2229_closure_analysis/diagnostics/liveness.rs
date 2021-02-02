@@ -15,13 +15,13 @@ pub fn f() {
 
     // Captured by value, but variable is dead on entry.
     move || {
-        c.x = 1; //~ WARN value captured by `c` is never read
+        c.x = 1;
         println!("{}", c.x);
     };
 
     // Read and written to, but never actually used.
     move || {
-        c.x += 1; //~ WARN unused variable: `c`
+        c.x += 1;
     };
 
     move || {
@@ -33,7 +33,7 @@ pub fn f() {
     move || {
         println!("{}", c.x);
         // Never read because this is FnOnce closure.
-        c.x += 1; //~  WARN value assigned to `c` is never read
+        c.x += 1;
         drop(b);
     };
 }
@@ -49,13 +49,12 @@ pub fn nested() {
     let mut e = MyStruct{ x: None, y: 1};
     || {
         || {
-            d.x = Some("d1"); //~ WARN value assigned to `d` is never read
+            d.x = Some("d1");
             d.x = Some("d2");
         };
         move || {
-            e.x = Some("e1"); //~  WARN value assigned to `e` is never read
-                            //~| WARN unused variable: `e`
-            e.x = Some("e2"); //~  WARN value assigned to `e` is never read
+            e.x = Some("e1");
+            e.x = Some("e2");
         };
     };
 }
