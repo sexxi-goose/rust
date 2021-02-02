@@ -626,10 +626,6 @@ impl<'tcx> TypeckResults<'tcx> {
             .flatten()
     }
 
-    pub fn upvar_capture(&self, upvar_id: ty::UpvarId) -> ty::UpvarCapture<'tcx> {
-        self.upvar_capture_map[&upvar_id]
-    }
-
     pub fn closure_kind_origins(&self) -> LocalTableInContext<'_, (Span, HirPlace<'tcx>)> {
         LocalTableInContext { hir_owner: self.hir_owner, data: &self.closure_kind_origins }
     }

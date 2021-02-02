@@ -143,3 +143,29 @@ impl<'tcx> Place<'tcx> {
         if projection_index == 0 { self.base_ty } else { self.projections[projection_index - 1].ty }
     }
 }
+
+/// Return true if the `proj_possible_ancestor` represents an ancestor path
+/// to `proj_capture` or `proj_possible_ancestor` is same as `proj_capture`,
+/// assuming they both start off of the same root variable.
+///
+/// **Note:** It's the caller's responsibility to ensure that both lists of projections
+///           start off of the same root variable.
+///
+/// Eg: 1. `foo.x` which is represented using `projections=[Field(x)]` is an ancestor of
+///        `foo.x.y` which is represented using `projections=[Field(x), Field(y)]`.
+///        Note both `foo.x` and `foo.x.y` start off of the same root variable `foo`.
+///     2. Since we only look at the projections here function will return `bar.x` as an a valid
+///        ancestor of `foo.x.y`. It's the caller's responsibility to ensure that both projections
+///        list are being applied to the same root variable.
+pub fn is_ancestor_or_same_capture(
+    proj_possible_ancestor: &[ProjectionKind],
+    proj_capture: &[ProjectionKind],
+) -> bool {
+    // We want to make sure `is_ancestor_or_same_capture("x.0.0", "x.0")` to return false.
+    // Therefore we can't just check if all projections are same in the zipped iterator below.
+    if proj_possible_ancestor.len() > proj_capture.len() {
+        return false;
+    }
+
+    proj_possible_ancestor.iter().zip(proj_capture).all(|(a, b)| a == b)
+}

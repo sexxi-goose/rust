@@ -706,7 +706,7 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
             for (&var_hir_id, min_capture_list) in closure_min_captures {
                 let upvar = upvars[&var_hir_id];
                 for captured_place in min_capture_list {
-                    let span = match captured_place.info.expr_id {
+                    let span = match captured_place.info.path_expr_id {
                         Some(expr_id) => self.ir.tcx.hir().span(expr_id),
                         None => upvar.span,
                     };
@@ -1436,7 +1436,7 @@ impl<'tcx> Liveness<'_, 'tcx> {
                     ty::UpvarCapture::ByValue(_) => {}
                     ty::UpvarCapture::ByRef(..) => continue,
                 };
-                let span = match captured_place.info.expr_id {
+                let span = match captured_place.info.path_expr_id {
                     Some(expr_id) => self.ir.tcx.hir().span(expr_id),
                     None => upvar.span,
                 };
