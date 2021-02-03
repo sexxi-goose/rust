@@ -8,6 +8,7 @@ use crate::build::{BlockAnd, BlockAndExtension, Builder};
 use crate::thir::*;
 use rustc_middle::middle::region;
 use rustc_middle::mir::AssertKind;
+use rustc_middle::mir::Place;
 use rustc_middle::mir::*;
 use rustc_middle::ty::{self, Ty, UpvarSubsts};
 use rustc_span::Span;
@@ -174,7 +175,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 block.and(Rvalue::Aggregate(box AggregateKind::Tuple, fields))
             }
-            ExprKind::Closure { closure_id, substs, upvars, movability } => {
+            ExprKind::Closure { closure_id, substs, upvars, movability, fake_reads } => {
                 // see (*) above
                 let operands: Vec<_> = upvars
                     .into_iter()
@@ -214,6 +215,19 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         }
                     })
                     .collect();
+
+                for thir_place in fake_reads.into_iter() {
+                    let fake_read_upvar = this.hir.mirror(thir_place);
+                    let mir_place = unpack!(block = this.as_place(block, fake_read_upvar));
+                    // [FIXME] RFC2229 FakeReadCause can be ForLet or ForMatch, need to use the correct one
+                    this.cfg.push_fake_read(
+                        block,
+                        source_info,
+                        FakeReadCause::ForMatchedPlace,
+                        mir_place,
+                    );
+                }
+
                 let result = match substs {
                     UpvarSubsts::Generator(substs) => {
                         // We implicitly set the discriminant to 0. See

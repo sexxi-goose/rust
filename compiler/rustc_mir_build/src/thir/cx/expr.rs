@@ -6,6 +6,7 @@ use crate::thir::*;
 use rustc_hir as hir;
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_index::vec::Idx;
+use rustc_middle::hir::place::Place as HirPlace;
 use rustc_middle::hir::place::PlaceBase as HirPlaceBase;
 use rustc_middle::hir::place::ProjectionKind as HirProjectionKind;
 use rustc_middle::mir::interpret::Scalar;
@@ -395,7 +396,37 @@ fn make_mirror_unadjusted<'a, 'tcx>(
                 .zip(substs.upvar_tys())
                 .map(|(captured_place, ty)| capture_upvar(cx, expr, captured_place, ty))
                 .collect();
-            ExprKind::Closure { closure_id: def_id, substs, upvars, movability }
+
+            let fake_reads = match cx.typeck_results().closure_fake_reads.get(&def_id) {
+                Some(vals) => vals
+                    .iter()
+                    .filter(|val| match val.base {
+                        HirPlaceBase::Upvar(_) => true,
+                        _ => false,
+                    })
+                    .map(|val| {
+                        let var_hir_id = match val.base {
+                            HirPlaceBase::Upvar(upvar_id) => {
+                                debug!("upvar");
+                                upvar_id.var_path.hir_id
+                            }
+                            _ => {
+                                bug!("Do not know how to get HirId out of Rvalue and StaticItem");
+                            }
+                        };
+                        fake_read_capture_upvar(cx, expr, val.clone(), var_hir_id).to_ref()
+                    })
+                    .collect(),
+                None => Vec::<ExprRef<'tcx>>::new(),
+            };
+
+            ExprKind::Closure {
+                closure_id: def_id,
+                substs,
+                upvars,
+                movability,
+                fake_reads: fake_reads,
+            }
         }
 
         hir::ExprKind::Path(ref qpath) => {
@@ -981,6 +1012,42 @@ fn overloaded_place<'a, 'tcx>(
 
     // construct and return a deref wrapper `*foo()`
     ExprKind::Deref { arg: ref_expr.to_ref() }
+}
+
+fn fake_read_capture_upvar<'tcx>(
+    cx: &mut Cx<'_, 'tcx>,
+    closure_expr: &'tcx hir::Expr<'tcx>,
+    place: HirPlace<'tcx>,
+    hir_id: hir::HirId,
+) -> Expr<'tcx> {
+    let temp_lifetime = cx.region_scope_tree.temporary_scope(closure_expr.hir_id.local_id);
+    let var_ty = place.base_ty;
+
+    let mut captured_place_expr =
+        Expr { temp_lifetime, ty: var_ty, span: closure_expr.span, kind: convert_var(cx, hir_id) };
+    // [FIXME] RFC2229 Maybe we should introduce an immutable borrow of the fake capture so that we don't
+    // end up moving this place
+    for proj in place.projections.iter() {
+        let kind = match proj.kind {
+            HirProjectionKind::Deref => ExprKind::Deref { arg: captured_place_expr.to_ref() },
+            HirProjectionKind::Field(field, ..) => {
+                // Variant index will always be 0, because for multi-variant
+                // enums, we capture the enum entirely.
+                ExprKind::Field {
+                    lhs: captured_place_expr.to_ref(),
+                    name: Field::new(field as usize),
+                }
+            }
+            HirProjectionKind::Index | HirProjectionKind::Subslice => {
+                // We don't capture these projections, so we can ignore them here
+                continue;
+            }
+        };
+
+        captured_place_expr = Expr { temp_lifetime, ty: proj.ty, span: closure_expr.span, kind };
+    }
+
+    captured_place_expr
 }
 
 fn capture_upvar<'a, 'tcx>(
