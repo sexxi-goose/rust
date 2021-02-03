@@ -1,5 +1,5 @@
 warning: the feature `capture_disjoint_fields` is incomplete and may not be safe to use and/or cause compiler crashes
-  --> /users/jgwills/rust/src/test/ui/closures/2229_closure_analysis/diagnostics/liveness-unintentional-copy.rs:1:12
+  --> $DIR/liveness-unintentional-copy.rs:1:12
    |
 LL | #![feature(capture_disjoint_fields)]
    |            ^^^^^^^^^^^^^^^^^^^^^^^

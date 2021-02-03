@@ -8,4 +8,3 @@ LL | #![feature(capture_disjoint_fields)]
    = note: see issue #53488 <https://github.com/rust-lang/rust/issues/53488> for more information
 
 warning: 1 warning emitted
-
