@@ -484,8 +484,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         updated_capture_info =
                             determine_capture_info(updated_capture_info, possible_descendant.info);
 
-                        // we need to keep the ancestor's `path_expr_id`
-                        updated_capture_info.path_expr_id = backup_path_expr_id;
+                        // we need to keep the ancestor's `path_expr_id`, if it is `None` then keep whatever `determine_capture_info` chose
+                        if let Some(_) = backup_path_expr_id {
+                            updated_capture_info.path_expr_id = backup_path_expr_id;
+                        }
                         false
                     }
 
@@ -504,8 +506,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             possible_ancestor.info =
                                 determine_capture_info(possible_ancestor.info, capture_info);
 
-                            // we need to keep the ancestor's `path_expr_id`
-                            possible_ancestor.info.path_expr_id = backup_path_expr_id;
+                            // we need to keep the ancestor's `path_expr_id`, if it is `None` then keep whatever `determine_capture_info` chose
+                            if let Some(_) = backup_path_expr_id {
+                                possible_ancestor.info.path_expr_id = backup_path_expr_id;
+                            }
 
                             // Only one ancestor of the current place will be in the list.
                             break;
