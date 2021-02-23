@@ -83,20 +83,18 @@ fn convert_to_hir_projections_and_truncate_for_capture<'tcx>(
     mir_projections: &[PlaceElem<'tcx>],
 ) -> Vec<HirProjectionKind> {
     let mut hir_projections = Vec::new();
+    let mut variant = None;
 
     for mir_projection in mir_projections {
         let hir_projection = match mir_projection {
             ProjectionElem::Deref => HirProjectionKind::Deref,
             ProjectionElem::Field(field, _) => {
-                // We will never encouter this for multivariant enums,
-                // read the comment for `Downcast`.
-                HirProjectionKind::Field(field.index() as u32, VariantIdx::new(0))
+                let variant = variant.unwrap_or(VariantIdx::new(0));
+                HirProjectionKind::Field(field.index() as u32, variant)
             }
-            ProjectionElem::Downcast(..) => {
-                // This projections exist only for enums that have
-                // multiple variants. Since such enums that are captured
-                // completely, we can stop here.
-                break;
+            ProjectionElem::Downcast(.., idx) => {
+                variant = Some(*idx);
+                continue
             }
             ProjectionElem::Index(..)
             | ProjectionElem::ConstantIndex { .. }
@@ -107,6 +105,7 @@ fn convert_to_hir_projections_and_truncate_for_capture<'tcx>(
             }
         };
 
+        variant = None;
         hir_projections.push(hir_projection);
     }
 
