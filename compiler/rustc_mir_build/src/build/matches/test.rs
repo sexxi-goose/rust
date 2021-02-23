@@ -154,7 +154,15 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         test: &Test<'tcx>,
         make_target_blocks: impl FnOnce(&mut Self) -> Vec<BasicBlock>,
     ) {
-        let place = place_builder.clone().into_place(self.hir.tcx(), self.hir.typeck_results());
+        let place: Place<'tcx>;
+        if let Ok(test_place_builder) =
+            place_builder.clone().try_upvars_resolved(self.hir.tcx(), self.hir.typeck_results())
+        {
+            place =
+                test_place_builder.clone().into_place(self.hir.tcx(), self.hir.typeck_results());
+        } else {
+            return;
+        }
         debug!(
             "perform_test({:?}, {:?}: {:?}, {:?})",
             block,

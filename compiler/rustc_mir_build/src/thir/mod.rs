@@ -10,7 +10,7 @@ use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_middle::infer::canonical::Canonical;
 use rustc_middle::middle::region;
-use rustc_middle::mir::{BinOp, BorrowKind, Field, UnOp};
+use rustc_middle::mir::{BinOp, BorrowKind, FakeReadCause, Field, UnOp};
 use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::subst::SubstsRef;
 use rustc_middle::ty::{AdtDef, Const, Ty, UpvarSubsts, UserType};
@@ -283,7 +283,7 @@ crate enum ExprKind<'tcx> {
         substs: UpvarSubsts<'tcx>,
         upvars: Vec<ExprRef<'tcx>>,
         movability: Option<hir::Movability>,
-        fake_reads: Vec<ExprRef<'tcx>>,
+        opt_fake_reads: Option<Vec<(ExprRef<'tcx>, FakeReadCause)>>,
     },
     Literal {
         literal: &'tcx Const<'tcx>,
