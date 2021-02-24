@@ -68,7 +68,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             let match_pairs = mem::take(&mut candidate.match_pairs);
 
             if let [MatchPair { pattern: Pat { kind: box PatKind::Or { pats }, .. }, place }] =
-                &*match_pairs.clone()
+                &*match_pairs
             {
                 existing_bindings.extend_from_slice(&new_bindings);
                 mem::swap(&mut candidate.bindings, &mut existing_bindings);
@@ -156,12 +156,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             } => {
                 // Apply the type ascription to the value at `match_pair.place`, which is the
                 // value being matched, taking the variance field into account.
-                let place =
-                    match_pair.place.clone().into_place(self.hir.tcx(), self.hir.typeck_results());
                 candidate.ascriptions.push(Ascription {
                     span: user_ty_span,
                     user_ty,
-                    source: place,
+                    source: match_pair
+                        .place
+                        .clone()
+                        .into_place(self.hir.tcx(), self.hir.typeck_results()),
                     variance,
                 });
 
@@ -176,13 +177,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
 
             PatKind::Binding { name, mutability, mode, var, ty, ref subpattern, is_primary: _ } => {
-                let place =
-                    match_pair.place.clone().into_place(self.hir.tcx(), self.hir.typeck_results());
                 candidate.bindings.push(Binding {
                     name,
                     mutability,
                     span: match_pair.pattern.span,
-                    source: place,
+                    source: match_pair
+                        .place
+                        .clone()
+                        .into_place(self.hir.tcx(), self.hir.typeck_results()),
                     var_id: var,
                     var_ty: ty,
                     binding_mode: mode,

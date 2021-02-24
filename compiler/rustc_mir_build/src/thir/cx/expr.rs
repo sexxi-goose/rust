@@ -1010,6 +1010,11 @@ fn convert_captured_hir_place<'tcx>(
     let temp_lifetime = cx.region_scope_tree.temporary_scope(closure_expr.hir_id.local_id);
     let var_ty = place.base_ty;
 
+    // The result of capture analysis in `rustc_typeck/check/upvar.rs`represents a captured path
+    // as it's seen for use within the closure and not at the time of closure creation.
+    //
+    // That is we see expect to see it start from a captured upvar and not something that is local
+    // to the closure's parent.
     let var_hir_id = match place.base {
         HirPlaceBase::Upvar(upvar_id) => upvar_id.var_path.hir_id,
         base => bug!("Expected an upvar, found {:?}", base),
