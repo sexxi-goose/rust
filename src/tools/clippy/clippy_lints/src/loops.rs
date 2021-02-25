@@ -21,6 +21,7 @@ use rustc_hir::{
 };
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_lint::{LateContext, LateLintPass, LintContext};
+use rustc_middle::mir::FakeReadCause;
 use rustc_middle::hir::map::Map;
 use rustc_middle::lint::in_external_macro;
 use rustc_middle::middle::region;
@@ -2072,6 +2073,8 @@ impl<'tcx> Delegate<'tcx> for MutatePairDelegate<'_, 'tcx> {
             }
         }
     }
+
+    fn fake_read(&mut self, _: rustc_typeck::expr_use_visitor::Place<'tcx>, _: FakeReadCause) { }
 }
 
 impl MutatePairDelegate<'_, '_> {
