@@ -424,6 +424,7 @@ pub struct TypeckResults<'tcx> {
     /// see `MinCaptureInformationMap` for more details.
     pub closure_min_captures: ty::MinCaptureInformationMap<'tcx>,
 
+    /// Tracks the fake reads required for a closure and the reason for the fake read.
     pub closure_fake_reads: FxHashMap<DefId, Vec<(HirPlace<'tcx>, FakeReadCause)>>,
 
     /// Stores the type, expression, span and optional scope span of all types

@@ -397,24 +397,18 @@ fn make_mirror_unadjusted<'a, 'tcx>(
                 .map(|(captured_place, ty)| capture_upvar(cx, expr, captured_place, ty))
                 .collect();
 
-            let opt_fake_reads = match cx.typeck_results().closure_fake_reads.get(&def_id) {
-                Some(vals) => Some(
-                    vals.iter()
-                        .map(|(place, cause)| {
-                            (convert_captured_hir_place(cx, expr, place.clone()).to_ref(), *cause)
-                        })
-                        .collect(),
-                ),
-                None => None,
+            // Convert the closure fake reads, if any, from hir `Place` to ExprRef
+            let fake_reads = match cx.typeck_results().closure_fake_reads.get(&def_id) {
+                Some(fake_reads) => fake_reads
+                    .iter()
+                    .map(|(place, cause)| {
+                        (convert_captured_hir_place(cx, expr, place.clone()).to_ref(), *cause)
+                    })
+                    .collect(),
+                None => Vec::<(ExprRef<'tcx>, FakeReadCause)>::new(),
             };
 
-            ExprKind::Closure {
-                closure_id: def_id,
-                substs,
-                upvars,
-                movability,
-                opt_fake_reads: opt_fake_reads,
-            }
+            ExprKind::Closure { closure_id: def_id, substs, upvars, movability, fake_reads }
         }
 
         hir::ExprKind::Path(ref qpath) => {

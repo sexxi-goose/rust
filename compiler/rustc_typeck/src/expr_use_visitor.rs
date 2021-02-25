@@ -11,7 +11,6 @@ use rustc_hir as hir;
 use rustc_hir::def::Res;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::PatKind;
-//use rustc_hir::QPath;
 use rustc_index::vec::Idx;
 use rustc_infer::infer::InferCtxt;
 use rustc_middle::hir::place::ProjectionKind;
@@ -54,6 +53,7 @@ pub trait Delegate<'tcx> {
     // `diag_expr_id` is the id used for diagnostics (see `consume` for more details).
     fn mutate(&mut self, assignee_place: &PlaceWithHirId<'tcx>, diag_expr_id: hir::HirId);
 
+    // The `place` should be a fake read because of specified `cause`.
     fn fake_read(&mut self, place: Place<'tcx>, cause: FakeReadCause);
 }
 
@@ -243,17 +243,18 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
                 for arm in arms.iter() {
                     return_if_err!(mc.cat_pattern(discr_place.clone(), &arm.pat, |_place, pat| {
                         match &pat.kind {
-                            PatKind::Binding(_, _, _, opt_sub_pat) => {
+                            PatKind::Binding(.., opt_sub_pat) => {
                                 // If the opt_sub_pat is None, than the binding does not count as
                                 // a wildcard for the purpose of borrowing discr
                                 if let None = opt_sub_pat {
                                     needs_to_be_read = true;
                                 }
                             }
-                            PatKind::TupleStruct(_, _, _)
-                            | PatKind::Struct(_, _, _)
+                            PatKind::TupleStruct(..)
+                            | PatKind::Struct(..)
+                            | PatKind::Tuple(..)
                             | PatKind::Lit(_) => {
-                                // If the PatKind is a TupleStruct, Struct, or Lit then we want
+                                // If the PatKind is a TupleStruct, Struct, Tuple or Lit then we want
                                 // to borrow discr
                                 needs_to_be_read = true;
                             }

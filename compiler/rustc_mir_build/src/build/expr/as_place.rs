@@ -305,15 +305,15 @@ impl<'tcx> PlaceBuilder<'tcx> {
         to_upvars_resolved_place_builder(self, tcx, typeck_results).unwrap()
     }
 
+    /// try_upvars_resolved will attempt to resolve the PlaceBuilder.
+    /// On success, it will return the resolved PlaceBuilder
+    /// On failure, it will return itself
     crate fn try_upvars_resolved<'a>(
         self,
         tcx: TyCtxt<'tcx>,
         typeck_results: &'a ty::TypeckResults<'tcx>,
     ) -> Result<PlaceBuilder<'tcx>, PlaceBuilder<'tcx>> {
-        match to_upvars_resolved_place_builder(self, tcx, typeck_results) {
-            Ok(upvars_resolved) => Ok(upvars_resolved),
-            Err(upvars_unresolved) => Err(upvars_unresolved),
-        }
+        to_upvars_resolved_place_builder(self, tcx, typeck_results)
     }
 
     crate fn base(&self) -> PlaceBase {
