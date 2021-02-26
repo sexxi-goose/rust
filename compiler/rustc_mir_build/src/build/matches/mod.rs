@@ -147,7 +147,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             .try_upvars_resolved(self.hir.tcx(), self.hir.typeck_results())
         {
             let scrutinee_place =
-                scrutinee_builder.clone().into_place(self.hir.tcx(), self.hir.typeck_results());
+                scrutinee_builder.into_place(self.hir.tcx(), self.hir.typeck_results());
             self.cfg.push_fake_read(block, source_info, cause_matched_place, scrutinee_place);
         }
 

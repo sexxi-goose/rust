@@ -200,7 +200,7 @@ fn find_capture_matching_projections<'a, 'tcx>(
 /// Takes a PlaceBuilder and resolves the upvar (if any) within it, so that the
 /// `PlaceBuilder` now starts from `PlaceBase::Local`.
 ///
-/// Returns a Result with the error being the HirId of the Upvar that was not found.
+/// Returns a Result with the error being the PlaceBuilder (`from_builder`) that was not found.
 fn to_upvars_resolved_place_builder<'a, 'tcx>(
     from_builder: PlaceBuilder<'tcx>,
     tcx: TyCtxt<'tcx>,
@@ -682,7 +682,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             block,
             source_info,
             len,
-            Rvalue::Len(slice.clone().into_place(self.hir.tcx(), self.hir.typeck_results())),
+            Rvalue::Len(slice.into_place(self.hir.tcx(), self.hir.typeck_results())),
         );
         // lt = idx < len
         self.cfg.push_assign(

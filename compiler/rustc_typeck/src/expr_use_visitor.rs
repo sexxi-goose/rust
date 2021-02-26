@@ -241,21 +241,30 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
                 let ExprUseVisitor { ref mc, body_owner: _, delegate: _ } = *self;
                 let mut needs_to_be_read = false;
                 for arm in arms.iter() {
-                    return_if_err!(mc.cat_pattern(discr_place.clone(), &arm.pat, |_place, pat| {
+                    return_if_err!(mc.cat_pattern(discr_place.clone(), &arm.pat, |place, pat| {
                         match &pat.kind {
                             PatKind::Binding(.., opt_sub_pat) => {
                                 // If the opt_sub_pat is None, than the binding does not count as
-                                // a wildcard for the purpose of borrowing discr
-                                if let None = opt_sub_pat {
+                                // a wildcard for the purpose of borrowing discr.
+                                if opt_sub_pat.is_none() {
                                     needs_to_be_read = true;
                                 }
                             }
-                            PatKind::TupleStruct(..)
-                            | PatKind::Struct(..)
-                            | PatKind::Tuple(..)
-                            | PatKind::Lit(_) => {
-                                // If the PatKind is a TupleStruct, Struct, Tuple or Lit then we want
-                                // to borrow discr
+                            PatKind::TupleStruct(..) | PatKind::Path(..) | PatKind::Struct(..) => {
+                                // If the PatKind is a TupleStruct, Path or Struct then we want to check
+                                // whether the Variant is a MultiVariant or a SingleVariant. We only want
+                                // to borrow discr if it is a MultiVariant.
+                                // If it is a SingleVariant and creates a binding we will handle that when
+                                // this callback gets called again.
+                                if let ty::Adt(def, _) = place.place.base_ty.kind() {
+                                    if def.variants.len() > 1 {
+                                        needs_to_be_read = true;
+                                    }
+                                }
+                            }
+                            PatKind::Tuple(..) | PatKind::Lit(_) => {
+                                // If the PatKind is a Tuple or Lit then we want
+                                // to borrow discr.
                                 needs_to_be_read = true;
                             }
                             _ => {}

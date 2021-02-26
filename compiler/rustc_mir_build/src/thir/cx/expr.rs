@@ -394,7 +394,7 @@ fn make_mirror_unadjusted<'a, 'tcx>(
                 .typeck_results()
                 .closure_min_captures_flattened(def_id)
                 .zip(substs.upvar_tys())
-                .map(|(captured_place, ty)| capture_upvar(cx, expr, captured_place, ty))
+                .map(|(captured_place, ty)| convert_capture(cx, expr, captured_place, ty))
                 .collect();
 
             // Convert the closure fake reads, if any, from hir `Place` to ExprRef
@@ -405,7 +405,7 @@ fn make_mirror_unadjusted<'a, 'tcx>(
                         (convert_captured_hir_place(cx, expr, place.clone()).to_ref(), *cause)
                     })
                     .collect(),
-                None => Vec::<(ExprRef<'tcx>, FakeReadCause)>::new(),
+                None => Vec::new(),
             };
 
             ExprKind::Closure { closure_id: def_id, substs, upvars, movability, fake_reads }
@@ -1044,7 +1044,7 @@ fn convert_captured_hir_place<'tcx>(
     captured_place_expr
 }
 
-fn capture_upvar<'a, 'tcx>(
+fn convert_capture<'a, 'tcx>(
     cx: &mut Cx<'_, 'tcx>,
     closure_expr: &'tcx hir::Expr<'tcx>,
     captured_place: &'a ty::CapturedPlace<'tcx>,
