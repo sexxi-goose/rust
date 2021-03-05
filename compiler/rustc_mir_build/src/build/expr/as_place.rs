@@ -305,9 +305,17 @@ impl<'tcx> PlaceBuilder<'tcx> {
         to_upvars_resolved_place_builder(self, tcx, typeck_results).unwrap()
     }
 
-    /// try_upvars_resolved will attempt to resolve the PlaceBuilder.
-    /// On success, it will return the resolved PlaceBuilder
-    /// On failure, it will return itself
+    /// Attempts to resolve the `PlaceBuilder`.
+    /// On success, it will return the resolved `PlaceBuilder`.
+    /// On failure, it will return itself.
+    ///
+    /// Upvars resolve may fail for a `PlaceBuilder` when attempting to
+    /// resolve a disjoint field whose root variable is not captured
+    /// (destructured assignments) or when attempting to resolve a root
+    /// variable (discriminant matching with only wildcard arm) that is
+    /// not captured. This can happen because the final mir that will be
+    /// generated doesn't require a read for this place. Failures will only
+    /// happen inside closures.
     crate fn try_upvars_resolved<'a>(
         self,
         tcx: TyCtxt<'tcx>,

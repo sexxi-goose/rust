@@ -663,8 +663,19 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
                             !upvars.contains_key(&upvar_id.var_path.hir_id)
                         }) {
                             // The nested closure might be fake reading the current (enclosing) closure's local variables.
-                            // We check if the root variable is ever mentioned within the enclosing closure, if not
-                            // then for the current body (if it's a closure) these do not require fake_read, we will ignore them.
+                            // We only want to fake read the fake read present in the nested closure that are not part of
+                            // the enclosing closure's local variables.
+                            //
+                            // ```rust,ignore(cannot-test-this-because-pseduo-code)
+                            // let v1 = (0, 1);
+                            // let c = || { // fake reads: v1
+                            //    let v2 = (0, 1);
+                            //    let e = || { // fake reads: v1, v2
+                            //       let (_, t1) = v1;
+                            //       let (_, t2) = v2;
+                            //    }
+                            // }
+                            // ```
                             continue;
                         }
                     }

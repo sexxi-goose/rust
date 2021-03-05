@@ -217,7 +217,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     .collect();
 
                 // Convert the closure fake reads, if any, from `ExprRef` to mir `Place`
-                // and push the fake reads
+                // and push the fake reads.
                 for (thir_place, cause) in fake_reads.into_iter() {
                     let fake_read_upvar = this.hir.mirror(thir_place);
                     let place_builder =
