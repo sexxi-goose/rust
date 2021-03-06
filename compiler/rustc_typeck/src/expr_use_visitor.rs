@@ -274,6 +274,13 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
 
                 if needs_to_be_read {
                     self.borrow_expr(&discr, ty::ImmBorrow);
+                } else {
+                    self.delegate
+                        .fake_read(discr_place.place.clone(), FakeReadCause::ForMatchedPlace);
+
+                    // We always want to walk the discriminant. We want to make sure, for instance,
+                    // that the discriminant has been initialized.
+                    self.walk_expr(&discr);
                 }
 
                 // treatment of the discriminant is handled while walking the arms.

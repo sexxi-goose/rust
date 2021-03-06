@@ -176,6 +176,23 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 block.and(Rvalue::Aggregate(box AggregateKind::Tuple, fields))
             }
             ExprKind::Closure { closure_id, substs, upvars, movability, fake_reads } => {
+                // Convert the closure fake reads, if any, from `ExprRef` to mir `Place`
+                // and push the fake reads.
+                for (thir_place, cause) in fake_reads.into_iter() {
+                    let fake_read_upvar = this.hir.mirror(thir_place);
+                    let place_builder =
+                        unpack!(block = this.as_place_builder(block, fake_read_upvar));
+
+                    if let Ok(place_builder_resolved) =
+                        place_builder.try_upvars_resolved(this.hir.tcx(), this.hir.typeck_results())
+                    {
+                        let mir_place = place_builder_resolved
+                            .clone()
+                            .into_place(this.hir.tcx(), this.hir.typeck_results());
+                        this.cfg.push_fake_read(block, source_info, cause, mir_place);
+                    }
+                }
+
                 // see (*) above
                 let operands: Vec<_> = upvars
                     .into_iter()
@@ -215,23 +232,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         }
                     })
                     .collect();
-
-                // Convert the closure fake reads, if any, from `ExprRef` to mir `Place`
-                // and push the fake reads.
-                for (thir_place, cause) in fake_reads.into_iter() {
-                    let fake_read_upvar = this.hir.mirror(thir_place);
-                    let place_builder =
-                        unpack!(block = this.as_place_builder(block, fake_read_upvar));
-
-                    if let Ok(place_builder_resolved) =
-                        place_builder.try_upvars_resolved(this.hir.tcx(), this.hir.typeck_results())
-                    {
-                        let mir_place = place_builder_resolved
-                            .clone()
-                            .into_place(this.hir.tcx(), this.hir.typeck_results());
-                        this.cfg.push_fake_read(block, source_info, cause, mir_place);
-                    }
-                }
 
                 let result = match substs {
                     UpvarSubsts::Generator(substs) => {
