@@ -178,6 +178,18 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             ExprKind::Closure { closure_id, substs, upvars, movability, fake_reads } => {
                 // Convert the closure fake reads, if any, from `ExprRef` to mir `Place`
                 // and push the fake reads.
+                // This must come before creating the operands. This is required in case
+                // there is a fake read and a borrow of the same path, since otherwise the
+                // fake read might interfere with the borrow. Consider an example like this
+                // one:
+                // ```
+                // let mut x = 0;
+                // let c = || {
+                //     &mut x; // mutable borrow of `x`
+                //     match x { _ => () } // fake read of `x`
+                // };
+                // ```
+
                 for (thir_place, cause) in fake_reads.into_iter() {
                     let fake_read_upvar = this.hir.mirror(thir_place);
                     let place_builder =

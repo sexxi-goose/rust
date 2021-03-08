@@ -96,9 +96,9 @@ fn convert_to_hir_projections_and_truncate_for_capture<'tcx>(
                 HirProjectionKind::Field(field.index() as u32, variant)
             }
             ProjectionElem::Downcast(.., idx) => {
-                // This projections exist for enums that have
-                // single and multiple variants.
-                // For single variants, enums are not captured completely.
+                // We capture multi-varirant enums completely, but we might
+                // see a downcast projection in case of single variant enums,
+                // so we need to account for it here.
                 // We keep track of VariantIdx so we can use this information
                 // if the next ProjectionElem is a Field.
                 variant = Some(*idx);

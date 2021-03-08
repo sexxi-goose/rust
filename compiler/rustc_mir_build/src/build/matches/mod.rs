@@ -247,7 +247,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 self.in_scope(arm_scope, arm.lint_level, |this| {
                     let body = this.hir.mirror(arm.body.clone());
 
-                    // `try_upvars_resolved` may fail if it is unable to resolved the given
+                    // `try_upvars_resolved` may fail if it is unable to resolve the given
                     // `PlaceBuilder` inside a closure. In this case, we don't want to include
                     // a scrutinee place. `scrutinee_place_builder` will fail to be resolved
                     // if the only match arm is a wildcard (`_`).
@@ -509,11 +509,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         VarBindingForm { opt_match_place: Some((ref mut match_place, _)), .. },
                     )))) = self.local_decls[local].local_info
                     {
-                        // `try_upvars_resolved` may fail if it is unable to resolved the given
+                        // `try_upvars_resolved` may fail if it is unable to resolve the given
                         // `PlaceBuilder` inside a closure. In this case, we don't want to include
                         // a scrutinee place. `scrutinee_place_builder` will fail for destructured
                         // assignments. This is because a closure only captures the precise places
-                        // that will read and as a result a closure may not capture the entire tuple
+                        // that it will read and as a result a closure may not capture the entire
                         // tuple/struct and rather have individual places that will be read in the
                         // final MIR.
                         // Example:

@@ -425,6 +425,24 @@ pub struct TypeckResults<'tcx> {
     pub closure_min_captures: ty::MinCaptureInformationMap<'tcx>,
 
     /// Tracks the fake reads required for a closure and the reason for the fake read.
+    /// When performing pattern matching for closures, there are times we don't end up
+    /// reading places that are mentioned in a closure (because of _ patterns). However,
+    /// to ensure the places are initialized, we introduce fake reads.
+    /// Consider these two examples:
+    /// ``` (discriminant matching with only wildcard arm)
+    /// let c = || match x { _ => ()};
+    /// ```
+    /// ``` (destructured assignments)
+    /// let c = || {
+    ///     let (t1, t2) = t;
+    /// }
+    /// ```
+    /// In the first example, we don't want to read/borrow `x` in `c` as the only match
+    /// arm contains only a wildcard.
+    /// In the second example, we capture the disjoint fields of `t` (`t.0` & `t.1`), but
+    /// we never capture `t`. This becomes an issue when we build MIR as we require
+    /// information on `t` in order to create place `t.0` and `t.1`. We can solve this
+    /// issue by fake reading `t`.
     pub closure_fake_reads: FxHashMap<DefId, Vec<(HirPlace<'tcx>, FakeReadCause)>>,
 
     /// Stores the type, expression, span and optional scope span of all types

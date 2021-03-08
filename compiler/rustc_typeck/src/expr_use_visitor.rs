@@ -250,8 +250,11 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
                                     needs_to_be_read = true;
                                 }
                             }
-                            PatKind::TupleStruct(..) | PatKind::Path(..) | PatKind::Struct(..) => {
-                                // If the PatKind is a TupleStruct, Path or Struct then we want to check
+                            PatKind::TupleStruct(..)
+                            | PatKind::Path(..)
+                            | PatKind::Struct(..)
+                            | PatKind::Tuple(..) => {
+                                // If the PatKind is a TupleStruct, Struct or Tuple then we want to check
                                 // whether the Variant is a MultiVariant or a SingleVariant. We only want
                                 // to borrow discr if it is a MultiVariant.
                                 // If it is a SingleVariant and creates a binding we will handle that when
@@ -262,8 +265,8 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
                                     }
                                 }
                             }
-                            PatKind::Tuple(..) | PatKind::Lit(_) => {
-                                // If the PatKind is a Tuple or Lit then we want
+                            PatKind::Lit(_) => {
+                                // If the PatKind is a Lit then we want
                                 // to borrow discr.
                                 needs_to_be_read = true;
                             }
@@ -662,6 +665,7 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
             ty::Closure(..) | ty::Generator(..)
         );
 
+        // If we have a nested closure, we want to include the fake reads present in the nested closure.
         if let Some(fake_reads) = self.mc.typeck_results.closure_fake_reads.get(&closure_def_id) {
             for (fake_read, cause) in fake_reads.iter() {
                 match fake_read.base {
@@ -683,6 +687,8 @@ impl<'a, 'tcx> ExprUseVisitor<'a, 'tcx> {
                             //    }
                             // }
                             // ```
+                            // This check is performed when visiting the body of the outermost closure (`c`) and ensures
+                            // that we don't add a fake read of v2 in c.
                             continue;
                         }
                     }
