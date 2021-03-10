@@ -7,11 +7,20 @@ LL | #![feature(capture_disjoint_fields)]
    = note: `#[warn(incomplete_features)]` on by default
    = note: see issue #53488 <https://github.com/rust-lang/rust/issues/53488> for more information
 
-error[E0381]: use of possibly-uninitialized variable: `x`
-  --> $DIR/pattern-matching-should-fail.rs:10:14
+error[E0004]: non-exhaustive patterns: type `u8` is non-empty
+  --> $DIR/pattern-matching-should-fail.rs:72:23
    |
 LL |     let c1 = || match x { };
-   |              ^^^^^^^^^^^^^^ use of possibly-uninitialized `x`
+   |                       ^
+   |
+   = help: ensure that all possible cases are being handled, possibly by adding wildcards or more match arms
+   = note: the matched value is of type `u8`
+
+error[E0381]: use of possibly-uninitialized variable: `x`
+  --> $DIR/pattern-matching-should-fail.rs:10:23
+   |
+LL |     let c1 = || match x { };
+   |                       ^ use of possibly-uninitialized `x`
 
 error[E0381]: borrow of possibly-uninitialized variable: `x`
   --> $DIR/pattern-matching-should-fail.rs:17:14
@@ -40,31 +49,24 @@ LL |         match variant {
    |               ------- borrow occurs due to use in closure
 
 error[E0381]: use of possibly-uninitialized variable: `g`
-  --> $DIR/pattern-matching-should-fail.rs:56:13
+  --> $DIR/pattern-matching-should-fail.rs:57:15
    |
-LL |       let a = || {
-   |  _____________^
-LL | |
-LL | |
-LL | |         match g { };
-...  |
-LL | |         c();
-LL | |     };
-   | |_____^ use of possibly-uninitialized `g`
+LL |         match g { };
+   |               ^ use of possibly-uninitialized `g`
 
 error[E0381]: use of possibly-uninitialized variable: `t`
-  --> $DIR/pattern-matching-should-fail.rs:56:13
+  --> $DIR/pattern-matching-should-fail.rs:60:19
    |
-LL |       let a = || {
-   |  _____________^
-LL | |
-LL | |
-LL | |         match g { };
-...  |
-LL | |         c();
-LL | |     };
-   | |_____^ use of possibly-uninitialized `t`
+LL |             match t { };
+   |                   ^ use of possibly-uninitialized `t`
 
-error: aborting due to 6 previous errors; 1 warning emitted
+error[E0381]: use of possibly-uninitialized variable: `x`
+  --> $DIR/pattern-matching-should-fail.rs:72:23
+   |
+LL |     let c1 = || match x { };
+   |                       ^ use of possibly-uninitialized `x`
 
-For more information about this error, try `rustc --explain E0381`.
+error: aborting due to 8 previous errors; 1 warning emitted
+
+Some errors have detailed explanations: E0004, E0381.
+For more information about an error, try `rustc --explain E0004`.

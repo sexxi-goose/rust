@@ -54,16 +54,24 @@ fn test5() {
     let g: !;
 
     let a = || {
-        //~^ ERROR: use of possibly-uninitialized variable: `g`
-        //~| ERROR: use of possibly-uninitialized variable: `t`
         match g { };
+        //~^ ERROR: use of possibly-uninitialized variable: `g`
         let c = ||  {
             match t { };
+            //~^ ERROR: use of possibly-uninitialized variable: `t`
         };
 
         c();
     };
 
+}
+
+// Should fake read the discriminant and throw an error
+fn test6() {
+    let x: u8;
+    let c1 = || match x { };
+    //~^ ERROR: use of possibly-uninitialized variable: `x`
+    //~| ERROR: non-exhaustive patterns: type `u8` is non-empty
 }
 
 fn main() {
@@ -72,4 +80,5 @@ fn main() {
     test3();
     test4();
     test5();
+    test6();
 }

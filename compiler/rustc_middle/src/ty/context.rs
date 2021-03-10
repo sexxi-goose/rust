@@ -430,20 +430,23 @@ pub struct TypeckResults<'tcx> {
     /// to ensure the places are initialized, we introduce fake reads.
     /// Consider these two examples:
     /// ``` (discriminant matching with only wildcard arm)
-    /// let c = || match x { _ => ()};
+    /// let x: u8;
+    /// let c = || match x { _ => () };
     /// ```
+    /// In this example, we don't need to actually read/borrow `x` in `c`, and so we don't
+    /// want to capture it. However, we do still want an error here, because `x` should have
+    /// to be initialized at the point where c is created. Therefore, we add a "fake read"
+    /// instead.
     /// ``` (destructured assignments)
     /// let c = || {
     ///     let (t1, t2) = t;
     /// }
     /// ```
-    /// In the first example, we don't want to read/borrow `x` in `c` as the only match
-    /// arm contains only a wildcard.
     /// In the second example, we capture the disjoint fields of `t` (`t.0` & `t.1`), but
     /// we never capture `t`. This becomes an issue when we build MIR as we require
     /// information on `t` in order to create place `t.0` and `t.1`. We can solve this
     /// issue by fake reading `t`.
-    pub closure_fake_reads: FxHashMap<DefId, Vec<(HirPlace<'tcx>, FakeReadCause)>>,
+    pub closure_fake_reads: FxHashMap<DefId, Vec<(HirPlace<'tcx>, FakeReadCause, hir::HirId)>>,
 
     /// Stores the type, expression, span and optional scope span of all types
     /// that are live across the yield of this generator (if a generator).

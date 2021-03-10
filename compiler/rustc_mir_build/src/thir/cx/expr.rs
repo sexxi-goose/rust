@@ -401,8 +401,9 @@ fn make_mirror_unadjusted<'a, 'tcx>(
             let fake_reads = match cx.typeck_results().closure_fake_reads.get(&def_id) {
                 Some(fake_reads) => fake_reads
                     .iter()
-                    .map(|(place, cause)| {
-                        (convert_captured_hir_place(cx, expr, place.clone()).to_ref(), *cause)
+                    .map(|(place, cause, hir_id)| {
+                        let captured_expr = convert_captured_hir_place(cx, expr, place.clone());
+                        (captured_expr.to_ref(), *cause, *hir_id)
                     })
                     .collect(),
                 None => Vec::new(),

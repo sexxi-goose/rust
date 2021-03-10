@@ -90,15 +90,13 @@ fn convert_to_hir_projections_and_truncate_for_capture<'tcx>(
         let hir_projection = match mir_projection {
             ProjectionElem::Deref => HirProjectionKind::Deref,
             ProjectionElem::Field(field, _) => {
-                // We will never encouter this for multivariant enums,
-                // read the comment for `Downcast`.
                 let variant = variant.unwrap_or(VariantIdx::new(0));
                 HirProjectionKind::Field(field.index() as u32, variant)
             }
             ProjectionElem::Downcast(.., idx) => {
-                // We capture multi-varirant enums completely, but we might
-                // see a downcast projection in case of single variant enums,
-                // so we need to account for it here.
+                // We don't expect to see multi-variant enums here, as earlier
+                // phases will have truncated them already. However, there can
+                // still be downcasts, thanks to single-variant enums.
                 // We keep track of VariantIdx so we can use this information
                 // if the next ProjectionElem is a Field.
                 variant = Some(*idx);

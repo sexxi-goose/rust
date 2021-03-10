@@ -283,7 +283,7 @@ crate enum ExprKind<'tcx> {
         substs: UpvarSubsts<'tcx>,
         upvars: Vec<ExprRef<'tcx>>,
         movability: Option<hir::Movability>,
-        fake_reads: Vec<(ExprRef<'tcx>, FakeReadCause)>,
+        fake_reads: Vec<(ExprRef<'tcx>, FakeReadCause, hir::HirId)>,
     },
     Literal {
         literal: &'tcx Const<'tcx>,
